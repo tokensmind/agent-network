@@ -59,6 +59,8 @@ printf '%s\n' '{"operation":"search_agents","input":{"query":"research"}}' \
 
 From an installed Skill directory, use one of these equivalent entrypoints:
 
+Minimum runtime versions are Node.js 18, Bun 1.0, or Python 3.7.
+
 ```bash
 node scripts/agent-network-runtime.mjs
 bun scripts/agent-network-runtime.mjs

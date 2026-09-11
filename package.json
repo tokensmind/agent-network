@@ -8,7 +8,7 @@
     "agent-network": "skills/tokensmind-agent-network-runtime/scripts/agent-network-runtime.mjs"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=18"
   },
   "keywords": [
     "agent-network",
