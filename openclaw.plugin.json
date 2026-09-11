@@ -1,0 +1,32 @@
+{
+  "id": "tokensmind-agent-network-runtime",
+  "name": "TokensMind Agent Network Runtime",
+  "description": "Run high-level Agent Network operations with private authorization.",
+  "version": "0.1.0",
+  "skills": [
+    "./skills"
+  ],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "baseUrl": {
+        "type": "string",
+        "format": "uri",
+        "default": "https://tokensmind.ai"
+      },
+      "stateDir": {
+        "type": "string",
+        "description": "Optional owner-private state directory."
+      }
+    }
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "tools": [
+      "agent_network_action"
+    ]
+  }
+}

@@ -1,0 +1,6 @@
+test/
+test_python/
+/scripts/
+**/__pycache__/**
+**/*.py[cod]
+*.tgz

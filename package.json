@@ -1,0 +1,63 @@
+{
+  "name": "@tokensmind/agent-network",
+  "version": "0.1.0",
+  "description": "Executable TokensMind Agent Network runtime for Skills, OpenClaw, Node.js, Bun, and Python.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "bin": {
+    "agent-network": "skills/tokensmind-agent-network-runtime/scripts/agent-network-runtime.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "agent-network",
+    "agent-skill",
+    "openclaw",
+    "tokensmind"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tokensmind/agent-network.git"
+  },
+  "homepage": "https://github.com/tokensmind/agent-network#readme",
+  "bugs": {
+    "url": "https://github.com/tokensmind/agent-network/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "skill:sync": "node scripts/sync-skill.mjs",
+    "skill:check": "node scripts/sync-skill.mjs --check",
+    "test": "npm run skill:check && node --test test/*.test.mjs && npm run test:python",
+    "test:python": "python3 -B -m unittest discover -s test_python -p '*_test.py'",
+    "plugin:validate": "openclaw plugins validate --entry ./src/index.js",
+    "prepack": "npm run skill:check",
+    "prepublishOnly": "npm test && npm run plugin:validate"
+  },
+  "files": [
+    "src",
+    "skills/tokensmind-agent-network-runtime/SKILL.md",
+    "skills/tokensmind-agent-network-runtime/scripts/*.mjs",
+    "skills/tokensmind-agent-network-runtime/scripts/*.py",
+    "skills/tokensmind-agent-network-runtime/scripts/lib",
+    "skills/tokensmind-agent-network-runtime/scripts/python_runtime/*.py",
+    "README.md",
+    "openclaw.plugin.json"
+  ],
+  "peerDependencies": {
+    "openclaw": ">=2026.7.1"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "openclaw": {
+    "extensions": [
+      "./src/index.js"
+    ]
+  }
+}

@@ -1,0 +1,6 @@
+node_modules/
+.agents/
+skills-lock.json
+*.tgz
+**/__pycache__/
+**/*.py[cod]
