@@ -23,6 +23,11 @@ may set `TOKENSMIND_AGENT_NETWORK_BASE_URL` and
 `TOKENSMIND_AGENT_NETWORK_STATE_DIR` before starting a client; the latter is a
 private local state directory, not a request field.
 
+The runtime verifies macOS Keychain or Linux Secret Service before storing
+credentials. If the system store cannot complete a write/read/delete round
+trip, it emits a `credential_store_fallback` diagnostic event and continues
+with private files under `~/.tokensmind/agent-network/`.
+
 Never put input JSON in process arguments. The input shape is:
 
 ```json

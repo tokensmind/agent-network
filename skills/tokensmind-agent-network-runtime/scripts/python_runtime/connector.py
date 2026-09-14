@@ -56,12 +56,12 @@ class AgentNetworkConnector:
         if "body" in params:
             operation["body"] = params["body"]
         reauthorize = params.get("reauthorize") is True
+        if is_public_discovery_request(operation) and not reauthorize:
+            return self._execute_business_request(operation)
         pending = self._store.read("pending")
         active = self._store.read("active")
         if pending:
             return self._resume_pending(pending, active, operation)
-        if is_public_discovery_request(operation) and not reauthorize:
-            return self._execute_business_request(operation)
         if not active or reauthorize:
             active = self._authorize(operation)
             return self._execute_and_finalize(self._store.read("pending"), active)

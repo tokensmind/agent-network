@@ -196,6 +196,10 @@ def create_executor(base_url=DEFAULT_BASE_URL, *, state_dir=None, write_event=No
         platform=platform,
         state_dir=state_dir,
         env=os.environ,
+        on_fallback=lambda fallback: writer({
+            "event": "credential_store_fallback",
+            **fallback,
+        }),
     ))
     connector = AgentNetworkConnector(
         store=credential_store,

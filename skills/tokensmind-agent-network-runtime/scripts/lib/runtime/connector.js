@@ -181,15 +181,14 @@ export function createConnector({ store, browser, baseUrl, http, client }) {
     const normalized = validateBusinessRequest(params);
     const operation = { ...normalized, body: params.body };
     const reauthorize = params.reauthorize === true;
-    const pending = await store.read('pending');
-    const active = await store.read('active');
-
-    if (pending) return resumePending(pending, operation, signal);
 
     if (isPublicDiscoveryRequest(operation) && !reauthorize) {
       return executeBusinessRequest({ operation, baseUrl, http, signal });
     }
 
+    const pending = await store.read('pending');
+    const active = await store.read('active');
+    if (pending) return resumePending(pending, operation, signal);
     if (!active || reauthorize) return authorizeAndExecute(operation, signal);
     return executeWithActive(operation, active, signal);
   }

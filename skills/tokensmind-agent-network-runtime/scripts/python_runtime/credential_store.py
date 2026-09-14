@@ -7,7 +7,10 @@ from .portable_store import (
     _origin_namespace,
     resolve_portable_state_dir,
 )
-from .system_credential_store import resolve_system_credential_store
+from .system_credential_store import (
+    SystemCredentialStoreError,
+    resolve_system_credential_store,
+)
 
 AUTO_SECURE_STORE = object()
 
@@ -94,11 +97,50 @@ def _file_stores(options):
     ]
 
 
+def _validate_system_records(system_store):
+    for name in RECORD_NAMES:
+        system_store.read(name)
+
+
+def _initialize_store(
+        system_store, fallback, fallback_dir, legacy_dirs, options, on_fallback):
+    record_dir = os.path.join(fallback_dir, _origin_namespace(options["origin"]))
+    legacy_sources = _file_stores({**options, "directories": legacy_dirs})
+    if system_store is None:
+        on_fallback({
+            "backend": None,
+            "directory": record_dir,
+            "reason": "No supported system credential store is available",
+        })
+        migrate_credential_stores(fallback, legacy_sources)
+        return fallback
+    try:
+        if not hasattr(system_store, "verify_availability"):
+            raise SystemCredentialStoreError(
+                "System credential store does not support availability verification",
+            )
+        system_store.verify_availability()
+        _validate_system_records(system_store)
+        sources = _file_stores({
+            **options, "directories": [fallback_dir] + legacy_dirs,
+        })
+        migrate_credential_stores(system_store, sources)
+        return system_store
+    except SystemCredentialStoreError as error:
+        on_fallback({
+            "backend": system_store.backend,
+            "directory": record_dir,
+            "reason": str(error),
+        })
+        migrate_credential_stores(fallback, legacy_sources)
+        return fallback
+
+
 def create_credential_store(
         origin, platform, *, state_dir=None, env=None, home_dir=None,
         secure_store=AUTO_SECURE_STORE,
         secure_store_resolver=resolve_system_credential_store,
-        command_runner=None):
+        command_runner=None, on_fallback=None):
     environment = os.environ if env is None else env
     if state_dir:
         return PortableStore(
@@ -119,17 +161,19 @@ def create_credential_store(
         system_store = secure_store_resolver(**resolver_options)
     else:
         system_store = secure_store
-    target = system_store or fallback
-    source_dirs = []
-    if system_store:
-        source_dirs.append(fallback_dir)
-    source_dirs.extend(resolve_legacy_state_dirs(platform, environment, home_dir))
-    sources = _file_stores({
-        "directories": list(dict.fromkeys(source_dirs)),
+    legacy_dirs = list(dict.fromkeys(
+        resolve_legacy_state_dirs(platform, environment, home_dir),
+    ))
+    return _initialize_store(
+        system_store,
+        fallback,
+        fallback_dir,
+        legacy_dirs,
+        {
         "origin": origin,
         "platform": platform,
         "env": environment,
         "home_dir": home_dir,
-    })
-    migrate_credential_stores(target, sources)
-    return target
+        },
+        on_fallback or (lambda _event: None),
+    )

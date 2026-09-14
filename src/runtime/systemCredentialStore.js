@@ -1,13 +1,24 @@
-import { spawn as defaultSpawn } from 'node:child_process';
+import { isDeepStrictEqual } from 'node:util';
+import { randomUUID } from 'node:crypto';
 import { constants as fsConstants, promises as defaultFs } from 'node:fs';
 import path from 'node:path';
 import { validatePortableRecord } from './portableStore.js';
+import {
+  commandFailure,
+  createCommandRunner,
+  runCommand,
+  SystemCredentialStoreError,
+  verifyRoundTrip,
+} from './systemCredentialSupport.js';
+
+export { createCommandRunner, SystemCredentialStoreError } from './systemCredentialSupport.js';
 
 const SERVICE_NAME = 'TokensMind Agent Network';
 const APPLICATION_NAME = 'tokensmind-agent-network';
 const RECORD_NAMES = new Set(['active', 'pending', 'instance']);
 const MACOS_SECURITY_PATH = '/usr/bin/security';
 const MACOS_ITEM_NOT_FOUND = 44;
+const SYSTEM_STORE_PROBE_LENGTH = 1024;
 
 function validateRecordName(name) {
   if (!RECORD_NAMES.has(name)) throw new Error(`Unsupported portable state record: ${name}`);
@@ -23,81 +34,102 @@ function parseRecord(name, source) {
   try {
     value = JSON.parse(source);
   } catch (error) {
-    throw new Error(`System Agent Network ${name} credential is invalid JSON`, { cause: error });
+    throw new SystemCredentialStoreError(
+      `System Agent Network ${name} credential is invalid JSON`,
+      { cause: error },
+    );
   }
-  validatePortableRecord(name, value);
+  try {
+    validatePortableRecord(name, value);
+  } catch (error) {
+    throw new SystemCredentialStoreError(
+      `System Agent Network ${name} credential has an invalid structure`,
+      { cause: error },
+    );
+  }
   return value;
 }
 
-function commandFailure(backend, operation, result) {
-  return new Error(
-    `${backend} ${operation} failed with exit code ${String(result.code)}`,
-  );
+function macPasswordInput(source) {
+  return `${source}\n${source}\n`;
 }
 
-export function createCommandRunner({ spawnImpl = defaultSpawn } = {}) {
-  return ({ command, args, input = '' }) => new Promise((resolve, reject) => {
-    const child = spawnImpl(command, args, { stdio: ['pipe', 'pipe', 'pipe'] });
-    const stdout = [];
-    const stderr = [];
-    let settled = false;
-    child.stdout.on('data', (chunk) => stdout.push(chunk));
-    child.stderr.on('data', (chunk) => stderr.push(chunk));
-    child.stdin.on('error', (error) => {
-      if (error.code === 'EPIPE' || settled) return;
-      settled = true;
-      reject(error);
+function createProbeValue() {
+  return randomUUID().padEnd(SYSTEM_STORE_PROBE_LENGTH, 'x');
+}
+
+function createMacCommands(run) {
+  const backend = 'macOS Keychain';
+  async function readSource(account) {
+    const result = await runCommand({
+      run, backend, operation: 'read',
+      request: {
+        command: MACOS_SECURITY_PATH,
+        args: ['find-generic-password', '-a', account, '-s', SERVICE_NAME, '-w'],
+      },
     });
-    child.on('error', (error) => {
-      if (settled) return;
-      settled = true;
-      reject(error);
+    if (result.code === MACOS_ITEM_NOT_FOUND) return null;
+    if (result.code !== 0) throw commandFailure(backend, 'read', result);
+    return result.stdout.trim();
+  }
+  async function writeSource(account, source) {
+    const result = await runCommand({
+      run, backend, operation: 'write',
+      request: {
+        command: MACOS_SECURITY_PATH,
+        args: ['add-generic-password', '-a', account, '-s', SERVICE_NAME, '-U', '-w'],
+        input: macPasswordInput(source),
+      },
     });
-    child.on('close', (code) => {
-      if (settled) return;
-      resolve({
-        code,
-        stdout: Buffer.concat(stdout).toString('utf8'),
-        stderr: Buffer.concat(stderr).toString('utf8'),
-      });
+    if (result.code !== 0) throw commandFailure(backend, 'write', result);
+  }
+  async function removeAccount(account) {
+    const result = await runCommand({
+      run, backend, operation: 'remove',
+      request: {
+        command: MACOS_SECURITY_PATH,
+        args: ['delete-generic-password', '-a', account, '-s', SERVICE_NAME],
+      },
     });
-    child.stdin.end(input);
-  });
+    if (![0, MACOS_ITEM_NOT_FOUND].includes(result.code)) {
+      throw commandFailure(backend, 'remove', result);
+    }
+  }
+  return { readSource, writeSource, removeAccount };
 }
 
 function createMacOperations({ namespace, run }) {
+  const { readSource, writeSource, removeAccount } = createMacCommands(run);
+  async function readRecord(name) {
+    const source = await readSource(credentialAccount(namespace, name));
+    return source === null ? null : parseRecord(name, source);
+  }
   return {
-    async read(name) {
-      const account = credentialAccount(namespace, name);
-      const result = await run({
-        command: MACOS_SECURITY_PATH,
-        args: ['find-generic-password', '-a', account, '-s', SERVICE_NAME, '-w'],
-      });
-      if (result.code === MACOS_ITEM_NOT_FOUND) return null;
-      if (result.code !== 0) throw commandFailure('macOS Keychain', 'read', result);
-      return parseRecord(name, result.stdout.trim());
-    },
+    read: readRecord,
     async write(name, value) {
       validateRecordName(name);
       validatePortableRecord(name, value);
       const account = credentialAccount(namespace, name);
-      const result = await run({
-        command: MACOS_SECURITY_PATH,
-        args: ['add-generic-password', '-a', account, '-s', SERVICE_NAME, '-U', '-w'],
-        input: `${JSON.stringify(value)}\n`,
-      });
-      if (result.code !== 0) throw commandFailure('macOS Keychain', 'write', result);
-    },
-    async remove(name) {
-      const account = credentialAccount(namespace, name);
-      const result = await run({
-        command: MACOS_SECURITY_PATH,
-        args: ['delete-generic-password', '-a', account, '-s', SERVICE_NAME],
-      });
-      if (![0, MACOS_ITEM_NOT_FOUND].includes(result.code)) {
-        throw commandFailure('macOS Keychain', 'remove', result);
+      await writeSource(account, JSON.stringify(value));
+      const stored = await readRecord(name);
+      if (!isDeepStrictEqual(stored, value)) {
+        throw new SystemCredentialStoreError(`macOS Keychain ${name} write verification failed`);
       }
     },
+    async remove(name) {
+      await removeAccount(credentialAccount(namespace, name));
+    },
+    async verifyAvailability() {
+      const account = `${namespace}:probe:${randomUUID()}`;
+      const expected = createProbeValue();
+      await verifyRoundTrip({
+        expected,
+        write: (source) => writeSource(account, source),
+        read: () => readSource(account),
+        remove: () => removeAccount(account),
+      });
+    },
+    backend: 'macos-keychain',
   };
 }
 
@@ -106,36 +138,73 @@ function linuxAttributes(namespace, name) {
   return ['application', APPLICATION_NAME, 'origin', namespace, 'record', name];
 }
 
-function createLinuxOperations({ namespace, command, run }) {
-  async function lookup(name) {
-    const result = await run({
-      command,
-      args: ['lookup', ...linuxAttributes(namespace, name)],
+function createLinuxCommands({ command, run }) {
+  const backend = 'Linux Secret Service';
+  async function lookupSource(attributes) {
+    const result = await runCommand({
+      run, backend, operation: 'read',
+      request: { command, args: ['lookup', ...attributes] },
     });
     const missing = result.code === 1 && !result.stdout.trim() && !result.stderr.trim();
     if (missing) return null;
-    if (result.code !== 0) throw commandFailure('Linux Secret Service', 'read', result);
-    return parseRecord(name, result.stdout.trim());
+    if (result.code !== 0) throw commandFailure(backend, 'read', result);
+    return result.stdout.trim();
+  }
+  async function writeSource(attributes, source) {
+    const result = await runCommand({
+      run, backend, operation: 'write',
+      request: {
+        command,
+        args: ['store', `--label=${SERVICE_NAME}`, ...attributes],
+        input: `${source}\n`,
+      },
+    });
+    if (result.code !== 0) throw commandFailure(backend, 'write', result);
+  }
+  async function removeAttributes(attributes) {
+    if (await lookupSource(attributes) === null) return;
+    const result = await runCommand({
+      run, backend, operation: 'remove',
+      request: { command, args: ['clear', ...attributes] },
+    });
+    if (result.code !== 0) throw commandFailure(backend, 'remove', result);
+  }
+  return { lookupSource, writeSource, removeAttributes };
+}
+
+function createLinuxOperations({ namespace, command, run }) {
+  const { lookupSource, writeSource, removeAttributes } = createLinuxCommands({ command, run });
+  async function readRecord(name) {
+    const source = await lookupSource(linuxAttributes(namespace, name));
+    return source === null ? null : parseRecord(name, source);
   }
   return {
-    read: lookup,
+    read: readRecord,
     async write(name, value) {
       validatePortableRecord(name, value);
-      const result = await run({
-        command,
-        args: ['store', `--label=${SERVICE_NAME}`, ...linuxAttributes(namespace, name)],
-        input: `${JSON.stringify(value)}\n`,
-      });
-      if (result.code !== 0) throw commandFailure('Linux Secret Service', 'write', result);
+      const attributes = linuxAttributes(namespace, name);
+      await writeSource(attributes, JSON.stringify(value));
+      if (!isDeepStrictEqual(await readRecord(name), value)) {
+        throw new SystemCredentialStoreError(`Linux Secret Service ${name} write verification failed`);
+      }
     },
     async remove(name) {
-      if (await lookup(name) === null) return;
-      const result = await run({
-        command,
-        args: ['clear', ...linuxAttributes(namespace, name)],
-      });
-      if (result.code !== 0) throw commandFailure('Linux Secret Service', 'remove', result);
+      await removeAttributes(linuxAttributes(namespace, name));
     },
+    async verifyAvailability() {
+      const probeName = `probe-${randomUUID()}`;
+      const attributes = [
+        'application', APPLICATION_NAME, 'origin', namespace, 'record', probeName,
+      ];
+      const expected = createProbeValue();
+      await verifyRoundTrip({
+        expected,
+        write: (source) => writeSource(attributes, source),
+        read: () => lookupSource(attributes),
+        remove: () => removeAttributes(attributes),
+      });
+    },
+    backend: 'linux-secret-service',
   };
 }
 

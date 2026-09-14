@@ -1,4 +1,4 @@
-import { cp, readFile } from 'node:fs/promises';
+import { cp, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -42,6 +42,12 @@ async function check() {
     const expected = await readFile(path.join(root, 'src', source), 'utf8');
     const actual = await readFile(path.join(skillRoot, 'scripts', 'lib', source), 'utf8');
     if (expected !== actual) throw new Error(`Skill runtime is out of sync: ${source}`);
+  }
+  const runtimeSources = await readdir(path.join(root, 'src', 'runtime'));
+  for (const source of runtimeSources) {
+    const expected = await readFile(path.join(root, 'src', 'runtime', source), 'utf8');
+    const actual = await readFile(path.join(skillRoot, 'scripts', 'lib', 'runtime', source), 'utf8');
+    if (expected !== actual) throw new Error(`Skill runtime is out of sync: runtime/${source}`);
   }
   validateSkill(await readFile(path.join(skillRoot, 'SKILL.md'), 'utf8'));
 }

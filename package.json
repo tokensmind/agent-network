@@ -40,6 +40,7 @@
   "files": [
     "src",
     "skills/tokensmind-agent-network-runtime/SKILL.md",
+    "skills/tokensmind-agent-network-runtime/package.json",
     "skills/tokensmind-agent-network-runtime/scripts/*.mjs",
     "skills/tokensmind-agent-network-runtime/scripts/*.py",
     "skills/tokensmind-agent-network-runtime/scripts/lib",

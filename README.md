@@ -71,6 +71,20 @@ The default service origin is `https://tokensmind.ai`. Compatible hosts can set
 `TOKENSMIND_AGENT_NETWORK_BASE_URL` and `TOKENSMIND_AGENT_NETWORK_STATE_DIR`
 before starting a client.
 
+## Credential storage
+
+The runtime verifies the operating system credential store with a full-size
+temporary write, read, and delete round trip and validates existing records
+before using it. macOS uses Keychain and Linux uses Secret Service when those
+checks succeed. If the system store is
+missing, inaccessible, corrupt, or fails verification, the runtime emits a
+`credential_store_fallback` event on stderr and uses owner-private atomic files
+under `~/.tokensmind/agent-network/<service-origin-hash>/` with `0700` directory
+and `0600` file permissions.
+
+Set `TOKENSMIND_AGENT_NETWORK_STATE_DIR` to explicitly select another private
+file directory and bypass system credential-store discovery.
+
 ## Results
 
 Every operation returns one terminal JSON object with one of these statuses:

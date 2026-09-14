@@ -6,7 +6,10 @@ import {
   originNamespace,
   resolvePortableStateDir,
 } from './portableStore.js';
-import { resolveSystemCredentialStore } from './systemCredentialStore.js';
+import {
+  resolveSystemCredentialStore,
+  SystemCredentialStoreError,
+} from './systemCredentialStore.js';
 
 const RECORD_NAMES = Object.freeze(['instance', 'pending', 'active']);
 
@@ -122,6 +125,53 @@ function createFileStores({ directories, origin, platform, env, homeDir, fs, ran
   }));
 }
 
+async function validateSystemRecords(systemStore) {
+  for (const name of RECORD_NAMES) await systemStore.read(name);
+}
+
+async function initializeStore({
+  systemStore, fallback, fallbackDirectory, legacyDirectories, storeOptions, onFallback,
+}) {
+  const recordDirectory = path.join(
+    fallbackDirectory, originNamespace(storeOptions.origin),
+  );
+  const legacySources = createFileStores({
+    ...storeOptions, directories: legacyDirectories,
+  });
+  if (!systemStore) {
+    onFallback({
+      backend: null,
+      directory: recordDirectory,
+      reason: 'No supported system credential store is available',
+    });
+    await migrateCredentialStores({ target: fallback, sources: legacySources });
+    return fallback;
+  }
+  try {
+    if (typeof systemStore.verifyAvailability !== 'function') {
+      throw new SystemCredentialStoreError(
+        'System credential store does not support availability verification',
+      );
+    }
+    await systemStore.verifyAvailability();
+    await validateSystemRecords(systemStore);
+    const sources = createFileStores({
+      ...storeOptions, directories: [fallbackDirectory, ...legacyDirectories],
+    });
+    await migrateCredentialStores({ target: systemStore, sources });
+    return systemStore;
+  } catch (error) {
+    if (!(error instanceof SystemCredentialStoreError)) throw error;
+    onFallback({
+      backend: systemStore.backend,
+      directory: recordDirectory,
+      reason: error.message,
+    });
+    await migrateCredentialStores({ target: fallback, sources: legacySources });
+    return fallback;
+  }
+}
+
 export function createCredentialStore({
   stateDir,
   origin,
@@ -133,6 +183,7 @@ export function createCredentialStore({
   secureStore,
   resolveSecureStore = resolveSystemCredentialStore,
   run,
+  onFallback = () => {},
 } = {}) {
   if (stateDir) {
     return createPortableStore({ stateDir, origin, platform, env, homeDir, fs, randomId });
@@ -147,16 +198,14 @@ export function createCredentialStore({
         platform, namespace: originNamespace(origin), env, fs, run,
       })
       : secureStore;
-    const target = systemStore || fallback;
-    const sourceDirectories = [
-      ...(systemStore ? [fallbackDirectory] : []),
-      ...resolveLegacyStateDirs({ platform, env, homeDir }),
-    ];
-    const sources = createFileStores({
-      directories: [...new Set(sourceDirectories)],
-      origin, platform, env, homeDir, fs, randomId,
+    const legacyDirectories = resolveLegacyStateDirs({ platform, env, homeDir });
+    return initializeStore({
+      systemStore,
+      fallback,
+      fallbackDirectory,
+      legacyDirectories: [...new Set(legacyDirectories)],
+      storeOptions: { origin, platform, env, homeDir, fs, randomId },
+      onFallback,
     });
-    await migrateCredentialStores({ target, sources });
-    return target;
   });
 }

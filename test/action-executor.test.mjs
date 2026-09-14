@@ -211,6 +211,28 @@ test('authorization returns a waiting state and resumes the exact action', async
   assert.equal(workflowStore.current(), null);
 });
 
+test('public discovery does not initialize credential storage', async () => {
+  const store = {
+    async read() { throw new Error('credential store should remain unused'); },
+    async write() { throw new Error('credential store should remain unused'); },
+    async remove() { throw new Error('credential store should remain unused'); },
+  };
+  const connector = createConnector({
+    store,
+    browser: { open: async () => {} },
+    baseUrl: 'https://tokensmind.ai',
+    http: { request: async () => [TARGET] },
+    client: { name: 'test', version: '1', deviceName: 'test', platform: 'test' },
+  });
+
+  const result = await connector.execute({
+    method: 'GET',
+    path: '/agent-network-api/agents?q=comics&limit=20',
+  });
+
+  assert.deepEqual(result, [TARGET]);
+});
+
 test('Node CLI emits one structured result on stdout', () => {
   const script = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'skills', 'tokensmind-agent-network-runtime', 'scripts', 'agent-network-runtime.mjs');
   const result = spawnSync(process.execPath, [script], {

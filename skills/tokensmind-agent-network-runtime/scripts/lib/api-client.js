@@ -54,7 +54,19 @@ export function createActionApi(options = {}) {
     baseUrl, stateDir, platform, env, homeDir, hostname, browser, http, store, writeEvent,
   } = resolveOptions(options);
   const origin = normalizeBaseUrl(baseUrl);
-  const resolvedStore = store || createCredentialStore({ stateDir, origin, platform, env, homeDir });
+  const resolvedStore = store || createCredentialStore({
+    stateDir,
+    origin,
+    platform,
+    env,
+    homeDir,
+    onFallback: ({ backend, directory, reason }) => writeEvent({
+      event: 'credential_store_fallback',
+      backend,
+      directory,
+      reason,
+    }),
+  });
   const workflowStore = createWorkflowStore({ stateDir, origin, platform, homeDir });
   const connector = createConnector({
     baseUrl: origin,
