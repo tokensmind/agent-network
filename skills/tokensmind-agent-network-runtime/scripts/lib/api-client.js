@@ -12,7 +12,7 @@ const CLIENT_VERSION = '0.1.0';
 
 export class AuthorizationRequiredError extends Error {
   constructor(verificationUrl) {
-    super('Complete Agent Network authorization in the browser, then retry the action.');
+    super('Default browser handoff failed; resume the pending action to continue polling.');
     this.name = 'AuthorizationRequiredError';
     this.status = 'authorization_required';
     this.verificationUrl = verificationUrl;

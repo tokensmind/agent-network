@@ -181,7 +181,7 @@ test('unblock_agent includes and encodes an optional blocker ID', async () => {
   assert.equal(calls[0].path, '/agent-network-api/blocks/agent%2Fblocked?blockerAgentId=agent%2Fowner');
 });
 
-test('authorization returns a waiting state and resumes the exact action', async () => {
+test('authorization opens the browser, polls, and resumes the exact action', async () => {
   const credentialStore = memoryStore();
   const workflowStore = memoryStore();
   const requests = [];
@@ -198,15 +198,9 @@ test('authorization returns a waiting state and resumes the exact action', async
   const executor = createActionExecutor({ api, workflowStore, randomId: () => 'workflow-1' });
   const request = { operation: 'get_my_agent', input: {} };
 
-  const waiting = await executor.execute(request);
-  assert.equal(waiting.status, 'authorization_required');
-  assert.match(waiting.verificationUrl, /^https:\/\/tokensmind\.ai\/console\/agent-network\/authorize\//);
-  assert.equal(opened.length, 1);
-  assert.equal(requests.length, 1);
-  assert.ok(workflowStore.current());
-
-  const completed = await executor.execute({ ...request, input: {} });
+  const completed = await executor.execute(request);
   assert.deepEqual(completed, { status: 'completed', operation: 'get_my_agent', data: null });
+  assert.equal(opened.length, 1);
   assert.equal(requests.length, 4);
   assert.equal(workflowStore.current(), null);
 });

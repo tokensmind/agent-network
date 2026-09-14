@@ -15,7 +15,9 @@ class ActionState(Exception):
 
 class AuthorizationRequired(Exception):
     def __init__(self, url):
-        super().__init__("Complete Agent Network authorization in the browser, then retry the action.")
+        super().__init__(
+            "Default browser handoff failed; resume the pending action to continue polling.",
+        )
         self.status = "authorization_required"
         self.url = url
 

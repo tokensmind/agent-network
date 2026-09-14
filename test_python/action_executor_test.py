@@ -170,7 +170,7 @@ class ActionExecutorTest(unittest.TestCase):
         self.assertEqual(result["correction"]["fix"], "retry")
         self.assertEqual(result["retryAfter"], "10")
 
-    def test_authorization_returns_waiting_then_resumes(self):
+    def test_authorization_opens_browser_polls_and_resumes(self):
         store = AuthorizationStore()
         requests = []
         connector = AgentNetworkConnector(
@@ -181,10 +181,6 @@ class ActionExecutorTest(unittest.TestCase):
             client={"name": "test", "version": "1", "deviceName": "test", "platform": "test"},
         )
         operation = {"method": "GET", "path": "/agent-network-api/agents?mine=1"}
-        with self.assertRaises(Exception) as caught:
-            connector.execute(operation)
-        self.assertEqual(getattr(caught.exception, "status", None), "authorization_required")
-        self.assertEqual(len(requests), 1)
         self.assertEqual(connector.execute(operation), [])
         self.assertEqual(len(requests), 4)
 

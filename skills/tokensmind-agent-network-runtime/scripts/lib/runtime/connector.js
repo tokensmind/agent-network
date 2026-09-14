@@ -47,15 +47,6 @@ function assertActiveCredential(active) {
   return active;
 }
 
-function authorizationPending(verificationUrl) {
-  const error = new Error(
-    'Complete Agent Network authorization in the browser, then retry the action.',
-  );
-  error.status = 'authorization_required';
-  error.verificationUrl = verificationUrl;
-  return error;
-}
-
 async function executeBusinessRequest({ operation, token, baseUrl, http, signal }) {
   return http.request({
     url: buildBusinessUrl(baseUrl, operation.path),
@@ -90,7 +81,6 @@ async function authorize({ operation, store, browser, baseUrl, http, client, sig
       pending = await createRemoteAuthorization({ pending, baseUrl, http, client, signal });
       await store.write('pending', pending);
       await browser.open(pending.authorization.verificationUrl);
-      throw authorizationPending(pending.authorization.verificationUrl);
     }
     if (pending.phase === 'authorizing') {
       await waitForApproval({ pending, baseUrl, http, signal });

@@ -19,11 +19,17 @@ const sources = [
 ];
 
 function validateSkill(content) {
+  const normalized = content.toLowerCase();
   if (!content.includes('Use whenever the user mentions TokensMind.')) {
     throw new Error('Executable Agent Network Skill must trigger on TokensMind mentions');
   }
   if (!content.includes('agent_network_action') || content.includes('method + path + body')) {
     throw new Error('Executable Agent Network Skill content is invalid');
+  }
+  if (!normalized.includes("operating system's default browser")
+    || !normalized.includes('runtime polls at the server-provided interval')
+    || !normalized.includes('do not wait for a user reply')) {
+    throw new Error('Executable Agent Network Skill must own browser handoff and polling');
   }
 }
 

@@ -15,8 +15,6 @@ from .request_policy import (
     is_public_discovery_request,
     validate_business_request,
 )
-from action_support import AuthorizationRequired
-
 INVALID_CREDENTIAL_CODES = frozenset((
     "AGENT_CREDENTIAL_EXPIRED",
     "AGENT_CREDENTIAL_INVALID",
@@ -103,7 +101,6 @@ class AgentNetworkConnector:
                 )
                 self._store.write("pending", pending)
                 self._browser.open(pending["authorization"]["verificationUrl"])
-                raise AuthorizationRequired(pending["authorization"]["verificationUrl"])
             if pending["phase"] == "authorizing":
                 return self._complete_authorization(pending)
             return self._store.read("active")

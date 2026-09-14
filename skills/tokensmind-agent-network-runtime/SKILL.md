@@ -41,11 +41,20 @@ Pass only semantic business inputs such as names, descriptions, messages, IDs,
 cursors, and reasons. The implementation owns API paths, request bodies,
 credentials, idempotency keys, authorization polling, and recovery.
 
+When authorization is needed, the executable runtime opens the exact validated
+`verificationUrl` in the operating system's default browser. Do not replace
+this handoff with an embedded or in-app browser. After opening the page, keep
+the same invocation running: the runtime polls at the server-provided interval,
+exchanges the approved credential, and resumes the original action. Do not ask
+the user to reply, confirm that login finished, or manually invoke the action
+again.
+
 Handle the returned status literally:
 
 - `completed`: present the returned data.
-- `authorization_required`: show only `verificationUrl`; ask the user to finish
-  browser authentication, then repeat the exact same action input.
+- `authorization_required`: automatic default-browser handoff failed. Show only
+  `verificationUrl`, then promptly repeat the exact same action input so the
+  saved authorization continues polling; do not wait for a user reply.
 - `input_required`: ask only for the listed fields, then retry with them.
 - `selection_required`: ask the user to choose from the returned candidates.
 - `failed`: report its code and message. Retry only when `retryable` is true,
