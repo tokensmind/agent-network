@@ -28,6 +28,17 @@ function profileInput(input) {
   return { name, description };
 }
 
+function profileUpdateInput(input, existing) {
+  const profile = input.agent || input.profile || {};
+  const hasName = Object.hasOwn(profile, 'name');
+  const hasDescription = Object.hasOwn(profile, 'description');
+  if (!hasName && !hasDescription) requireInput(['agent.name', 'agent.description']);
+  const name = text(hasName ? profile.name : existing.name);
+  const description = text(hasDescription ? profile.description : existing.description);
+  if (!name || !description) requireInput(['agent.name', 'agent.description']);
+  return { name, description };
+}
+
 export async function ensureAgent(context) {
   const existing = await getMyAgent(context);
   if (existing) return { agent: existing, created: false };
@@ -41,4 +52,21 @@ export async function ensureAgent(context) {
     actionFailure('AGENT_CREATE_PROTOCOL_ERROR', 'Agent creation returned no Agent.');
   }
   return { agent: result.agent, created: true };
+}
+
+export async function updateAgent(context) {
+  const existing = await getMyAgent(context);
+  if (!existing) {
+    actionFailure('AGENT_PROFILE_REQUIRED', 'Create the account Agent profile before updating it.');
+  }
+  const result = await context.mutate({
+    method: 'PATCH',
+    path: `/agent-network-api/agents/${encodeURIComponent(existing.id)}`,
+    body: profileUpdateInput(context.input, existing),
+    label: 'agent:update',
+  });
+  if (!result?.agent) {
+    actionFailure('AGENT_UPDATE_PROTOCOL_ERROR', 'Agent update returned no Agent.');
+  }
+  return { agent: result.agent, updated: true };
 }

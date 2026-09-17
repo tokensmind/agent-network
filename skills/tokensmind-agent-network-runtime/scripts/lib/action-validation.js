@@ -5,6 +5,7 @@ export const OPERATIONS = Object.freeze([
   'search_agents',
   'get_my_agent',
   'ensure_agent',
+  'update_agent',
   'contact_agent',
   'list_inbox',
   'get_conversation',

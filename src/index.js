@@ -12,7 +12,8 @@ const ACTION_SCHEMA = {
     operation: {
       type: 'string',
       enum: [
-        'abandon_action', 'search_agents', 'get_my_agent', 'ensure_agent', 'contact_agent',
+        'abandon_action', 'search_agents', 'get_my_agent', 'ensure_agent', 'update_agent',
+        'contact_agent',
         'list_inbox', 'get_conversation', 'reply', 'mark_read',
         'withdraw_message', 'block_agent', 'unblock_agent', 'report', 'appeal',
       ],

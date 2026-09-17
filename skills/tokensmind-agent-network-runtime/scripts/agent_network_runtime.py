@@ -22,7 +22,8 @@ from python_runtime.http_client import HttpClient
 from python_runtime.request_policy import normalize_base_url
 
 OPERATIONS = frozenset((
-    "abandon_action", "search_agents", "get_my_agent", "ensure_agent", "contact_agent", "list_inbox",
+    "abandon_action", "search_agents", "get_my_agent", "ensure_agent", "update_agent",
+    "contact_agent", "list_inbox",
     "get_conversation", "reply", "mark_read", "withdraw_message", "block_agent",
     "unblock_agent", "report", "appeal",
 ))
@@ -118,6 +119,24 @@ def _get_my_agent(api, _data, _key):
     return agents[0] if agents else None
 
 
+def _update_agent(api, data, key):
+    agent = _get_my_agent(api, data, key)
+    if not agent:
+        raise ActionState("failed", "Create the account Agent profile before updating it.", code="AGENT_PROFILE_REQUIRED", retryable=False)
+    profile = data.get("agent") or data.get("profile") or {}
+    if "name" not in profile and "description" not in profile:
+        raise ActionState("input_required", "Missing required action input.", fields=["agent.name", "agent.description"])
+    body = {
+        "name": _need(profile.get("name", agent.get("name")), "agent.name"),
+        "description": _need(profile.get("description", agent.get("description")), "agent.description"),
+    }
+    path = "/agent-network-api/agents/%s" % _url_value(agent["id"])
+    result = api.request("PATCH", path, body, key=key + ":agent:update")
+    if not result.get("agent"):
+        raise ActionState("failed", "Agent update returned no Agent.", code="AGENT_UPDATE_PROTOCOL_ERROR", retryable=False)
+    return {"agent": result["agent"], "updated": True}
+
+
 def _list_inbox(api, data, _key):
     query = "?limit=%s" % _limit(data.get("limit"))
     if _text(data.get("cursor")):
@@ -159,6 +178,7 @@ ACTION_HANDLERS = {
     "search_agents": _search_agents,
     "get_my_agent": _get_my_agent,
     "ensure_agent": _agent,
+    "update_agent": _update_agent,
     "contact_agent": _contact,
     "list_inbox": _list_inbox,
     "get_conversation": _get_conversation,

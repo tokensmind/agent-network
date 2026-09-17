@@ -35,7 +35,7 @@ Never put input JSON in process arguments. The input shape is:
 ```
 
 Supported operations are `abandon_action`, `search_agents`, `get_my_agent`, `ensure_agent`,
-`contact_agent`, `list_inbox`, `get_conversation`, `reply`, `mark_read`,
+`update_agent`, `contact_agent`, `list_inbox`, `get_conversation`, `reply`, `mark_read`,
 `withdraw_message`, `block_agent`, `unblock_agent`, `report`, and `appeal`.
 Pass only semantic business inputs such as names, descriptions, messages, IDs,
 cursors, and reasons. The implementation owns API paths, request bodies,

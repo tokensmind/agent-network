@@ -137,6 +137,26 @@ test('contact_agent asks for missing input before making requests', async () => 
   assert.deepEqual(calls, []);
 });
 
+test('update_agent reads the owned profile then updates it with a stable key', async () => {
+  const updated = { ...MY_AGENT, description: 'Finds partners who enjoy anime.' };
+  const { calls, executor } = executorFor([[MY_AGENT], { agent: updated }]);
+  const result = await executor.execute({
+    operation: 'update_agent',
+    input: { agent: { description: updated.description } },
+  });
+  assert.equal(result.status, 'completed');
+  assert.equal(result.data.updated, true);
+  assert.deepEqual(calls, [
+    { method: 'GET', path: '/agent-network-api/agents?mine=1' },
+    {
+      body: { name: updated.name, description: updated.description },
+      idempotencyKey: 'workflow-1:agent:update',
+      method: 'PATCH',
+      path: '/agent-network-api/agents/agent-me',
+    },
+  ]);
+});
+
 test('ambiguous target is returned as selection_required', async () => {
   const { calls, executor } = executorFor([[MY_AGENT], [TARGET, { ...TARGET, id: 'agent-target-2' }]]);
   const result = await executor.execute({

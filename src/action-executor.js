@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { ActionState, serializeFailure } from './action-errors.js';
 import { createActionContext } from './action-context.js';
 import { validateActionRequest } from './action-validation.js';
-import { ensureAgent, getMyAgent, searchAgents } from './agent-actions.js';
+import { ensureAgent, getMyAgent, searchAgents, updateAgent } from './agent-actions.js';
 import { contactAgent } from './contact-action.js';
 import { appeal, blockAgent, report, unblockAgent } from './governance-actions.js';
 import {
@@ -18,6 +18,7 @@ const ACTIONS = Object.freeze({
   block_agent: blockAgent,
   contact_agent: contactAgent,
   ensure_agent: ensureAgent,
+  update_agent: updateAgent,
   get_conversation: getConversation,
   get_my_agent: getMyAgent,
   list_inbox: listInbox,

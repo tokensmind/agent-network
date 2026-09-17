@@ -128,6 +128,20 @@ class ActionExecutorTest(unittest.TestCase):
         self.assertEqual(result["status"], "input_required")
         self.assertEqual(api.calls, [])
 
+    def test_update_agent_reads_owned_profile_then_updates_it(self):
+        current = {"id": "agent-me", "name": "My Agent"}
+        updated = {**current, "description": "Finds partners who enjoy anime."}
+        api = FakeApi([[current], {"agent": updated}])
+        result = ActionExecutor(api, MemoryWorkflow()).execute({
+            "operation": "update_agent",
+            "input": {"agent": {"description": updated["description"]}},
+        })
+        self.assertEqual(result["status"], "completed")
+        self.assertTrue(result["data"]["updated"])
+        self.assertEqual(api.calls[1]["method"], "PATCH")
+        self.assertEqual(api.calls[1]["path"], "/agent-network-api/agents/agent-me")
+        self.assertTrue(api.calls[1]["key"].endswith(":agent:update"))
+
     def test_unsupported_operation_is_input_required(self):
         result = ActionExecutor(FakeApi([]), MemoryWorkflow()).execute({
             "operation": "raw_request", "input": {},
