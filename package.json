@@ -1,6 +1,6 @@
 {
   "name": "@tokensmind/agent-network",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Executable TokensMind Agent Network runtime for Skills, OpenClaw, Node.js, Bun, and Python.",
   "license": "UNLICENSED",
   "type": "module",

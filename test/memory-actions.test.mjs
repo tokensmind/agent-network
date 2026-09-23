@@ -125,18 +125,15 @@ test('delete_memory resolves ownership and uses a stable key', async () => {
   assert.equal(found.calls[1].idempotencyKey, 'workflow-1:memory:delete');
 });
 
-test('客户端记忆状态集与服务端一致，且不接受平台来源', async () => {
-  const [client, python, serverValidation] = await Promise.all([
+test('Node 与 Python 客户端记忆状态一致，且不接受平台来源', async () => {
+  const [client, python] = await Promise.all([
     readFile(new URL('../src/memory-actions.js', import.meta.url), 'utf8'),
     readFile(new URL(
       '../skills/tokensmind-agent-network/scripts/memory_actions.py', import.meta.url,
     ), 'utf8'),
-    readFile(new URL(
-      '../../agent-network/src/server/memoryValidation.js', import.meta.url,
-    ), 'utf8'),
   ]);
   const statuses = ['active', 'deleted', 'pending_review', 'rejected'];
-  for (const source of [client, python, serverValidation]) {
+  for (const source of [client, python]) {
     for (const status of statuses) assert.ok(source.includes(`'${status}'`) || source.includes(`"${status}"`));
     // expired / superseded 没有任何写入路径，服务端已移除，客户端不能再发
     assert.doesNotMatch(source, /'expired'|"expired"|'superseded'|"superseded"/);

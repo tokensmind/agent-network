@@ -2,7 +2,7 @@
   "id": "tokensmind-agent-network",
   "name": "TokensMind Agent Network Runtime",
   "description": "Run high-level Agent Network operations with private authorization.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "skills": [
     "./skills"
   ],
