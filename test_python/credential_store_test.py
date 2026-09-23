@@ -8,7 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 PACKAGE_DIR = Path(__file__).resolve().parents[1]
-SCRIPTS_DIR = PACKAGE_DIR / "skills" / "tokensmind-agent-network-runtime" / "scripts"
+SCRIPTS_DIR = PACKAGE_DIR / "skills" / "tokensmind-agent-network" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from python_runtime.credential_store import create_credential_store

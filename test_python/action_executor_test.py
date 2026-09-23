@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-SCRIPT_DIR = Path(__file__).parents[1] / "skills" / "tokensmind-agent-network-runtime" / "scripts"
+SCRIPT_DIR = Path(__file__).parents[1] / "skills" / "tokensmind-agent-network" / "scripts"
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from agent_network_runtime import ActionExecutor  # noqa: E402
@@ -111,7 +111,7 @@ class ActionExecutorTest(unittest.TestCase):
         self.assertTrue(result["data"]["created"])
         self.assertEqual([call["method"] + " " + call["path"] for call in api.calls], [
             "GET /agent-network-api/agents?mine=1",
-            "GET /agent-network-api/agents?q=Research%20Agent&limit=20",
+            "GET /agent-network-api/agents?q=Research%20Agent",
             "POST /agent-network-api/requirements",
             "POST /agent-network-api/requirements/requirement-1/publish",
             "GET /agent-network-api/requirements/requirement-1/recommendations",
@@ -128,18 +128,33 @@ class ActionExecutorTest(unittest.TestCase):
         self.assertEqual(result["status"], "input_required")
         self.assertEqual(api.calls, [])
 
+    def test_ensure_agent_sends_optional_public_tags(self):
+        profile = {
+            "name": "My Agent",
+            "description": "A useful research Agent.",
+            "tags": ["research", "evidence"],
+        }
+        api = FakeApi([[], {"agent": {"id": "agent-me", **profile}}])
+        result = ActionExecutor(api, MemoryWorkflow()).execute({
+            "operation": "ensure_agent",
+            "input": {"agent": profile},
+        })
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(api.calls[1]["body"], profile)
+
     def test_update_agent_reads_owned_profile_then_updates_it(self):
-        current = {"id": "agent-me", "name": "My Agent"}
-        updated = {**current, "description": "Finds partners who enjoy anime."}
+        current = {"id": "agent-me", "name": "My Agent", "description": "A useful Agent", "tags": []}
+        updated = {**current, "tags": ["anime", "community"]}
         api = FakeApi([[current], {"agent": updated}])
         result = ActionExecutor(api, MemoryWorkflow()).execute({
             "operation": "update_agent",
-            "input": {"agent": {"description": updated["description"]}},
+            "input": {"agent": {"tags": updated["tags"]}},
         })
         self.assertEqual(result["status"], "completed")
         self.assertTrue(result["data"]["updated"])
         self.assertEqual(api.calls[1]["method"], "PATCH")
         self.assertEqual(api.calls[1]["path"], "/agent-network-api/agents/agent-me")
+        self.assertEqual(api.calls[1]["body"]["tags"], updated["tags"])
         self.assertTrue(api.calls[1]["key"].endswith(":agent:update"))
 
     def test_unsupported_operation_is_input_required(self):
@@ -155,7 +170,36 @@ class ActionExecutorTest(unittest.TestCase):
             "input": {"query": "a/b? c"},
         })
         self.assertEqual(result["status"], "completed")
-        self.assertEqual(api.calls[0]["path"], "/agent-network-api/agents?limit=20&q=a%2Fb%3F%20c")
+        self.assertEqual(api.calls[0]["path"], "/agent-network-api/agents?q=a%2Fb%3F%20c")
+
+    def test_search_agents_requires_query_and_omits_client_limit(self):
+        missing_api = FakeApi([])
+        missing = ActionExecutor(missing_api, MemoryWorkflow()).execute({
+            "operation": "search_agents",
+            "input": {"limit": 100},
+        })
+        self.assertEqual(missing["status"], "input_required")
+        self.assertEqual(missing["fields"], ["query"])
+        self.assertEqual(missing_api.calls, [])
+
+        api = FakeApi([[]])
+        result = ActionExecutor(api, MemoryWorkflow()).execute({
+            "operation": "search_agents",
+            "input": {"query": "research", "limit": 100},
+        })
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(api.calls[0]["path"], "/agent-network-api/agents?q=research")
+
+    def test_search_agents_fails_explicitly_without_account_agent(self):
+        error = AgentNetworkHttpError(409, "AGENT_REQUIRED", "Agent profile required")
+        result = ActionExecutor(FakeApi([error]), MemoryWorkflow()).execute({
+            "operation": "search_agents",
+            "input": {"query": "research"},
+        })
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["code"], "AGENT_REQUIRED")
+        self.assertEqual(result["nextOperation"], "ensure_agent")
+        self.assertIn("ensure_agent", result["message"])
 
     def test_unblock_agent_includes_encoded_blocker_id(self):
         api = FakeApi([{}])
@@ -184,7 +228,7 @@ class ActionExecutorTest(unittest.TestCase):
         self.assertEqual(result["correction"]["fix"], "retry")
         self.assertEqual(result["retryAfter"], "10")
 
-    def test_authorization_opens_browser_polls_and_resumes(self):
+    def test_search_without_credential_authorizes_and_resumes(self):
         store = AuthorizationStore()
         requests = []
         connector = AgentNetworkConnector(
@@ -194,9 +238,41 @@ class ActionExecutorTest(unittest.TestCase):
             http=AuthorizationHttp(store, requests),
             client={"name": "test", "version": "1", "deviceName": "test", "platform": "test"},
         )
-        operation = {"method": "GET", "path": "/agent-network-api/agents?mine=1"}
+        operation = {"method": "GET", "path": "/agent-network-api/agents?q=research"}
         self.assertEqual(connector.execute(operation), [])
         self.assertEqual(len(requests), 4)
+        self.assertTrue(requests[3]["url"].endswith("/agent-network-api/agents?q=research"))
+        self.assertTrue(requests[3]["headers"]["Authorization"].startswith("Bearer tm_agent_"))
+
+    def test_search_401_reauthorizes_and_replays(self):
+        store = AuthorizationStore()
+        store.write("active", {"token": "rejected-token", "credentialId": "old"})
+        requests = []
+
+        class ReauthorizationHttp(AuthorizationHttp):
+            def __init__(self, authorization_store, captured):
+                super().__init__(authorization_store, captured)
+                self.rejected = False
+
+            def request(self, url, method="GET", headers=None, *, body=None):
+                if not self.rejected and "/agents?q=research" in url:
+                    self.rejected = True
+                    self.requests.append({"url": url, "method": method, "headers": headers, "body": body})
+                    raise AgentNetworkHttpError(401, "AUTH_REQUIRED", "Sign in required")
+                return super().request(url, method, headers, body=body)
+
+        connector = AgentNetworkConnector(
+            store=store,
+            browser=type("Browser", (), {"open": lambda self, url: None})(),
+            base_url="https://tokensmind.ai",
+            http=ReauthorizationHttp(store, requests),
+            client={"name": "test", "version": "1", "deviceName": "test", "platform": "test"},
+        )
+
+        result = connector.execute({"method": "GET", "path": "/agent-network-api/agents?q=research"})
+        self.assertEqual(result, [])
+        self.assertEqual(requests[0]["headers"]["Authorization"], "Bearer rejected-token")
+        self.assertTrue(requests[-1]["headers"]["Authorization"].startswith("Bearer tm_agent_"))
 
     def test_python_cli_emits_one_structured_result(self):
         script = SCRIPT_DIR / "agent_network_runtime.py"

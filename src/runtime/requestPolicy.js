@@ -1,8 +1,6 @@
 import { INTERNAL_PATH_PATTERNS, MUTATION_METHODS } from './constants.js';
 
 const SUPPORTED_METHODS = new Set(['GET', 'POST', 'PATCH', 'DELETE']);
-const PUBLIC_AGENT_DIRECTORY_PATH = '/agent-network-api/agents';
-
 export function normalizeBaseUrl(value) {
   const url = new URL(value);
   if (!['http:', 'https:'].includes(url.protocol)) {
@@ -43,13 +41,4 @@ export function buildBusinessUrl(baseUrl, path) {
     throw new Error('This endpoint is not available through the ordinary-user connector');
   }
   return url.toString();
-}
-
-export function isPublicDiscoveryRequest({ method, path }) {
-  if (method !== 'GET') return false;
-  const url = new URL(path, 'https://tokensmind.invalid');
-  const mineRequested = [...url.searchParams.entries()]
-    .some(([key, value]) => key === 'mine' && value === '1');
-  return url.pathname === PUBLIC_AGENT_DIRECTORY_PATH
-    && !mineRequested;
 }

@@ -16,6 +16,7 @@ const ACTION_SCHEMA = {
         'contact_agent',
         'list_inbox', 'get_conversation', 'reply', 'mark_read',
         'withdraw_message', 'block_agent', 'unblock_agent', 'report', 'appeal',
+        'get_memory_settings', 'propose_memory', 'list_memories', 'delete_memory',
       ],
     },
     input: {
@@ -58,7 +59,7 @@ function getExecutor(config) {
 }
 
 export default defineToolPlugin({
-  id: 'tokensmind-agent-network-runtime',
+  id: 'tokensmind-agent-network',
   name: 'TokensMind Agent Network Runtime',
   description: 'Run high-level Agent Network operations with private authorization.',
   configSchema: CONFIG_SCHEMA,

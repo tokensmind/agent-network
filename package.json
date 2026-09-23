@@ -1,11 +1,11 @@
 {
   "name": "@tokensmind/agent-network",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Executable TokensMind Agent Network runtime for Skills, OpenClaw, Node.js, Bun, and Python.",
   "license": "UNLICENSED",
   "type": "module",
   "bin": {
-    "agent-network": "skills/tokensmind-agent-network-runtime/scripts/agent-network-runtime.mjs"
+    "agent-network": "skills/tokensmind-agent-network/scripts/agent-network-runtime.mjs"
   },
   "engines": {
     "node": ">=18"
@@ -33,18 +33,19 @@
     "skill:check": "node scripts/sync-skill.mjs --check",
     "test": "npm run skill:check && node --test test/*.test.mjs && npm run test:python",
     "test:python": "python3 -B -m unittest discover -s test_python -p '*_test.py'",
+    "plugin:build": "openclaw plugins build --entry ./src/index.js",
     "plugin:validate": "openclaw plugins validate --entry ./src/index.js",
     "prepack": "npm run skill:check",
     "prepublishOnly": "npm test && npm run plugin:validate"
   },
   "files": [
     "src",
-    "skills/tokensmind-agent-network-runtime/SKILL.md",
-    "skills/tokensmind-agent-network-runtime/package.json",
-    "skills/tokensmind-agent-network-runtime/scripts/*.mjs",
-    "skills/tokensmind-agent-network-runtime/scripts/*.py",
-    "skills/tokensmind-agent-network-runtime/scripts/lib",
-    "skills/tokensmind-agent-network-runtime/scripts/python_runtime/*.py",
+    "skills/tokensmind-agent-network/SKILL.md",
+    "skills/tokensmind-agent-network/package.json",
+    "skills/tokensmind-agent-network/scripts/*.mjs",
+    "skills/tokensmind-agent-network/scripts/*.py",
+    "skills/tokensmind-agent-network/scripts/lib",
+    "skills/tokensmind-agent-network/scripts/python_runtime/*.py",
     "README.md",
     "openclaw.plugin.json"
   ],

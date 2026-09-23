@@ -1,9 +1,6 @@
-from urllib.parse import parse_qsl, urljoin, urlsplit, urlunsplit
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from .constants import INTERNAL_PATH_PATTERNS, MUTATION_METHODS, SUPPORTED_METHODS
-
-PUBLIC_AGENT_DIRECTORY_PATH = "/agent-network-api/agents"
-
 
 def normalize_base_url(value):
     parsed = urlsplit(str(value))
@@ -74,12 +71,3 @@ def build_business_url(base_url, path):
     if _is_internal_path(parsed.path):
         raise ValueError("This endpoint is not available through the ordinary-user connector")
     return url
-
-
-def is_public_discovery_request(operation):
-    if operation.get("method") != "GET":
-        return False
-    parsed = urlsplit(operation.get("path", ""))
-    query = parse_qsl(parsed.query)
-    mine_requested = any(key == "mine" and value == "1" for key, value in query)
-    return parsed.path == PUBLIC_AGENT_DIRECTORY_PATH and not mine_requested

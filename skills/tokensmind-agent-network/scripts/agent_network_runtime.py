@@ -6,7 +6,6 @@ import sys
 
 from action_executor import ActionExecutor as BaseActionExecutor, validate_request
 from action_support import ActionApi, ActionState, LazyStore, ReportingBrowser, WorkflowStore
-from action_validation import limit as _limit
 from action_validation import require_text as _need
 from action_validation import text as _text
 from action_validation import url_value as _url_value
@@ -14,10 +13,15 @@ from governance_actions import appeal as _appeal
 from governance_actions import block_agent as _block_agent
 from governance_actions import report as _report
 from governance_actions import unblock_agent as _unblock_agent
+from memory_actions import delete_memory as _delete_memory
+from memory_actions import get_memory_settings as _get_memory_settings
+from memory_actions import list_memories as _list_memories
+from memory_actions import propose_memory as _propose_memory
 from python_runtime.browser import BrowserOpener
 from python_runtime.connector import AgentNetworkConnector
 from python_runtime.constants import DEFAULT_BASE_URL
 from python_runtime.credential_store import create_credential_store
+from python_runtime.errors import AgentNetworkHttpError
 from python_runtime.http_client import HttpClient
 from python_runtime.request_policy import normalize_base_url
 
@@ -26,7 +30,16 @@ OPERATIONS = frozenset((
     "contact_agent", "list_inbox",
     "get_conversation", "reply", "mark_read", "withdraw_message", "block_agent",
     "unblock_agent", "report", "appeal",
+    "get_memory_settings", "propose_memory", "list_memories", "delete_memory",
 ))
+
+
+def _tags(value):
+    if value is None:
+        return []
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        raise ActionState("input_required", "agent.tags must be an array of strings.", fields=["agent.tags"])
+    return value
 
 
 def _target(api, data):
@@ -35,7 +48,7 @@ def _target(api, data):
     if target_id:
         return {"id": target_id, "name": _text(target.get("name"))}
     name = _need(target.get("name"), "target.name")
-    agents = api.request("GET", "/agent-network-api/agents?q=%s&limit=20" % _url_value(name))
+    agents = api.request("GET", "/agent-network-api/agents?q=%s" % _url_value(name))
     exact = [agent for agent in agents if _text(agent.get("name")).lower() == name.lower()]
     candidates = exact or agents
     if not candidates:
@@ -54,7 +67,8 @@ def _agent(api, data, key):
     profile = data.get("agent") or data.get("profile") or {}
     name = _need(profile.get("name"), "agent.name")
     description = _need(profile.get("description"), "agent.description")
-    result = api.request("POST", "/agent-network-api/agents", {"name": name, "description": description}, key=key + ":agent:create")
+    body = {"name": name, "description": description, "tags": _tags(profile.get("tags"))}
+    result = api.request("POST", "/agent-network-api/agents", body, key=key + ":agent:create")
     if not result.get("agent"):
         raise ActionState("failed", "Agent creation returned no Agent.", code="AGENT_CREATE_PROTOCOL_ERROR", retryable=False)
     return {"agent": result["agent"], "created": True}
@@ -105,11 +119,19 @@ def _contact(api, data, key):
 
 
 def _search_agents(api, data, _key):
-    query = _text(data.get("query"))
-    suffix = "?limit=%s" % _limit(data.get("limit"))
-    if query:
-        suffix += "&q=" + _url_value(query)
-    return api.request("GET", "/agent-network-api/agents" + suffix)
+    query = _need(data.get("query"), "query")
+    try:
+        return api.request("GET", "/agent-network-api/agents?q=" + _url_value(query))
+    except AgentNetworkHttpError as error:
+        if error.code not in ("AGENT_REQUIRED", "AGENT_PROFILE_REQUIRED"):
+            raise
+        raise ActionState(
+            "failed",
+            "Create the account Agent profile with ensure_agent before searching.",
+            code=error.code,
+            nextOperation="ensure_agent",
+            retryable=False,
+        ) from error
 
 
 def _get_my_agent(api, _data, _key):
@@ -124,11 +146,13 @@ def _update_agent(api, data, key):
     if not agent:
         raise ActionState("failed", "Create the account Agent profile before updating it.", code="AGENT_PROFILE_REQUIRED", retryable=False)
     profile = data.get("agent") or data.get("profile") or {}
-    if "name" not in profile and "description" not in profile:
-        raise ActionState("input_required", "Missing required action input.", fields=["agent.name", "agent.description"])
+    if not any(field in profile for field in ("name", "description", "tags")):
+        fields = ["agent.name", "agent.description", "agent.tags"]
+        raise ActionState("input_required", "Missing required action input.", fields=fields)
     body = {
         "name": _need(profile.get("name", agent.get("name")), "agent.name"),
         "description": _need(profile.get("description", agent.get("description")), "agent.description"),
+        "tags": _tags(profile.get("tags", agent.get("tags"))),
     }
     path = "/agent-network-api/agents/%s" % _url_value(agent["id"])
     result = api.request("PATCH", path, body, key=key + ":agent:update")
@@ -189,6 +213,10 @@ ACTION_HANDLERS = {
     "unblock_agent": _unblock_agent,
     "report": _report,
     "appeal": _appeal,
+    "get_memory_settings": _get_memory_settings,
+    "propose_memory": _propose_memory,
+    "list_memories": _list_memories,
+    "delete_memory": _delete_memory,
 }
 
 

@@ -8,7 +8,6 @@ import {
 } from './deviceAuthorization.js';
 import {
   buildBusinessUrl,
-  isPublicDiscoveryRequest,
   validateBusinessRequest,
 } from './requestPolicy.js';
 
@@ -121,6 +120,11 @@ function isInvalidAgentCredential(error) {
     ].includes(error.code);
 }
 
+function requiresAuthorization(error) {
+  return error instanceof AgentNetworkHttpError
+    && (error.status === 401 || isInvalidAgentCredential(error));
+}
+
 async function executeAndFinalize({ pending, active, dependencies }) {
   assertActiveCredential(active);
   try {
@@ -134,7 +138,7 @@ async function executeAndFinalize({ pending, active, dependencies }) {
   } catch (error) {
     if (error instanceof AgentNetworkHttpError && error.status < 500 && error.status !== 429) {
       await dependencies.store.remove('pending');
-      if (isInvalidAgentCredential(error)) await dependencies.store.remove('active');
+      if (requiresAuthorization(error)) await dependencies.store.remove('active');
     }
     throw error;
   }
@@ -160,7 +164,7 @@ export function createConnector({ store, browser, baseUrl, http, client }) {
     try {
       return await executeBusinessRequest({ operation, token: active.token, baseUrl, http, signal });
     } catch (error) {
-      if (!isInvalidAgentCredential(error)) throw error;
+      if (!requiresAuthorization(error)) throw error;
       await store.remove('active');
       return authorizeAndExecute(operation, signal);
     }
@@ -171,10 +175,6 @@ export function createConnector({ store, browser, baseUrl, http, client }) {
     const normalized = validateBusinessRequest(params);
     const operation = { ...normalized, body: params.body };
     const reauthorize = params.reauthorize === true;
-
-    if (isPublicDiscoveryRequest(operation) && !reauthorize) {
-      return executeBusinessRequest({ operation, baseUrl, http, signal });
-    }
 
     const pending = await store.read('pending');
     const active = await store.read('active');

@@ -12,7 +12,6 @@ from .errors import AgentNetworkHttpError
 from .http_client import UNSET
 from .request_policy import (
     build_business_url,
-    is_public_discovery_request,
     validate_business_request,
 )
 INVALID_CREDENTIAL_CODES = frozenset((
@@ -36,6 +35,12 @@ def _is_http_error(error, codes):
     return isinstance(error, AgentNetworkHttpError) and error.code in codes
 
 
+def _requires_authorization(error):
+    return isinstance(error, AgentNetworkHttpError) and (
+        error.status == 401 or error.code in INVALID_CREDENTIAL_CODES
+    )
+
+
 class AgentNetworkConnector:
     def __init__(self, store, browser, base_url, *, http, client):
         self._store = store
@@ -54,8 +59,6 @@ class AgentNetworkConnector:
         if "body" in params:
             operation["body"] = params["body"]
         reauthorize = params.get("reauthorize") is True
-        if is_public_discovery_request(operation) and not reauthorize:
-            return self._execute_business_request(operation)
         pending = self._store.read("pending")
         active = self._store.read("active")
         if pending:
@@ -66,7 +69,7 @@ class AgentNetworkConnector:
         try:
             return self._execute_business_request(operation, active["token"])
         except AgentNetworkHttpError as error:
-            if error.code not in INVALID_CREDENTIAL_CODES:
+            if not _requires_authorization(error):
                 raise
             self._store.remove("active")
             active = self._authorize(operation)
@@ -148,6 +151,6 @@ class AgentNetworkConnector:
         except AgentNetworkHttpError as error:
             if error.status < 500 and error.status != 429:
                 self._store.remove("pending")
-                if error.code in INVALID_CREDENTIAL_CODES:
+                if _requires_authorization(error):
                     self._store.remove("active")
             raise

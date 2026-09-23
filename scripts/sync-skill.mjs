@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const SKILL_NAME = 'tokensmind-agent-network-runtime';
+const SKILL_NAME = 'tokensmind-agent-network';
 const target = path.join(root, 'skills', SKILL_NAME, 'scripts', 'lib');
 const sources = [
   'action-errors.js',
@@ -13,6 +13,7 @@ const sources = [
   'contact-action.js',
   'messaging-actions.js',
   'governance-actions.js',
+  'memory-actions.js',
   'action-executor.js',
   'api-client.js',
   'workflow-store.js',
@@ -30,6 +31,22 @@ function validateSkill(content) {
     || !normalized.includes('runtime polls at the server-provided interval')
     || !normalized.includes('do not wait for a user reply')) {
     throw new Error('Executable Agent Network Skill must own browser handoff and polling');
+  }
+  if (!normalized.includes("list each agent's name")
+    || !normalized.includes('not omit the description')
+    || !normalized.includes('numeric match scores or score ranges')) {
+    throw new Error('Executable Agent Network Skill must define search result presentation');
+  }
+  for (const required of [
+    'get_memory_settings', 'propose_memory', 'list_memories', 'delete_memory',
+    'model_inferred', 'untrusted data', 'does not delete stored memory',
+    // 自报来源不可信、墓碑不可绕过、自述经验不抬排名：三条都必须留在文档里
+    'MEMORY_DELETED_BY_USER', 'sourceType` is self-reported',
+    'never improves how other users',
+  ]) {
+    if (!normalized.includes(required.toLowerCase())) {
+      throw new Error(`Executable Agent Network Skill is missing memory rule: ${required}`);
+    }
   }
 }
 

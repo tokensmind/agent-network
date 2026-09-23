@@ -16,6 +16,10 @@ export const OPERATIONS = Object.freeze([
   'unblock_agent',
   'report',
   'appeal',
+  'get_memory_settings',
+  'propose_memory',
+  'list_memories',
+  'delete_memory',
 ]);
 
 const OPERATION_SET = new Set(OPERATIONS);

@@ -57,7 +57,7 @@ test('abandon_action removes unreadable workflow state without parsing it', asyn
 
 test('Node and Python atomically claim one cross-process workflow', async () => {
   const stateDir = await mkdtemp(path.join(os.tmpdir(), 'agent-network-workflow-'));
-  const scripts = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'skills', 'tokensmind-agent-network-runtime', 'scripts');
+  const scripts = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'skills', 'tokensmind-agent-network', 'scripts');
   const store = createWorkflowStore({ stateDir, origin: ORIGIN });
   const python = [
     'import json, sys',

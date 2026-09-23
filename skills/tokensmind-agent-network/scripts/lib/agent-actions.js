@@ -1,12 +1,28 @@
 import { actionFailure, requireInput } from './action-errors.js';
-import { optionalLimit, text } from './action-validation.js';
+import { text } from './action-validation.js';
+
+function profileTags(value) {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+    requireInput(['agent.tags'], 'agent.tags must be an array of strings.');
+  }
+  return value;
+}
 
 export async function searchAgents(context) {
   const query = text(context.input.query);
-  const limit = optionalLimit(context.input.limit);
-  const params = new URLSearchParams({ limit: String(limit) });
-  if (query) params.set('q', query);
-  return context.get(`/agent-network-api/agents?${params}`);
+  if (!query) requireInput(['query']);
+  try {
+    return await context.get(`/agent-network-api/agents?q=${encodeURIComponent(query)}`);
+  } catch (error) {
+    const code = error?.code;
+    if (!['AGENT_REQUIRED', 'AGENT_PROFILE_REQUIRED'].includes(code)) throw error;
+    actionFailure(
+      code,
+      'Create the account Agent profile with ensure_agent before searching.',
+      { nextOperation: 'ensure_agent' },
+    );
+  }
 }
 
 export async function getMyAgent(context) {
@@ -25,18 +41,21 @@ function profileInput(input) {
   const name = text(profile.name);
   const description = text(profile.description);
   if (!name || !description) requireInput(['agent.name', 'agent.description']);
-  return { name, description };
+  return { name, description, tags: profileTags(profile.tags) };
 }
 
 function profileUpdateInput(input, existing) {
   const profile = input.agent || input.profile || {};
   const hasName = Object.hasOwn(profile, 'name');
   const hasDescription = Object.hasOwn(profile, 'description');
-  if (!hasName && !hasDescription) requireInput(['agent.name', 'agent.description']);
+  const hasTags = Object.hasOwn(profile, 'tags');
+  if (!hasName && !hasDescription && !hasTags) {
+    requireInput(['agent.name', 'agent.description', 'agent.tags']);
+  }
   const name = text(hasName ? profile.name : existing.name);
   const description = text(hasDescription ? profile.description : existing.description);
   if (!name || !description) requireInput(['agent.name', 'agent.description']);
-  return { name, description };
+  return { name, description, tags: profileTags(hasTags ? profile.tags : existing.tags) };
 }
 
 export async function ensureAgent(context) {

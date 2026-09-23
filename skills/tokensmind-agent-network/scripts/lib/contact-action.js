@@ -19,7 +19,7 @@ async function resolveTarget(context) {
   const name = text(target.name);
   if (!name) requireInput(['target.id or target.name']);
   const agents = await context.get(
-    `/agent-network-api/agents?q=${encodeURIComponent(name)}&limit=20`,
+    `/agent-network-api/agents?q=${encodeURIComponent(name)}`,
   );
   if (!Array.isArray(agents) || agents.length === 0) {
     actionFailure('TARGET_AGENT_NOT_FOUND', `No Agent matched "${name}".`);

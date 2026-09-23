@@ -1,0 +1,35 @@
+name: Publish npm
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    if: github.repository == 'tokensmind/agent-network'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+          registry-url: https://registry.npmjs.org
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify tag matches package version
+        run: |
+          node -e 'const pkg=require("./package.json"); if (process.env.GITHUB_REF_NAME !== `v${pkg.version}`) throw new Error(`Tag ${process.env.GITHUB_REF_NAME} does not match package ${pkg.version}`)'
+      - name: Install npm with Trusted Publishing support
+        run: npm install --global npm@11.5.1
+      - name: Install minimum OpenClaw peer
+        run: npm install --no-save --package-lock=false --ignore-scripts openclaw@2026.7.1
+      - run: npm test
+      - run: npm run plugin:validate
+      - run: npm pack --dry-run --ignore-scripts
+      - run: npm publish --access public --provenance

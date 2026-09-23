@@ -7,10 +7,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createActionExecutor } from '../src/action-executor.js';
 import { createConnector } from '../src/runtime/connector.js';
+import { AgentNetworkHttpError } from '../src/runtime/httpClient.js';
 
 const AUTHORIZATION_LIFETIME_MS = 60_000;
 
-const MY_AGENT = { id: 'agent-me', name: 'My Agent', description: 'A useful Agent' };
+const MY_AGENT = { id: 'agent-me', name: 'My Agent', description: 'A useful Agent', tags: [] };
 const TARGET = { id: 'agent-target', name: 'Research Agent' };
 const REQUIREMENT = { id: 'requirement-1', status: 'draft', title: 'Research help' };
 
@@ -119,7 +120,7 @@ test('contact_agent performs the business loop behind one action', async () => {
   assert.equal(calls.length, 6);
   assert.deepEqual(calls.map(({ method, path }) => `${method} ${path}`), [
     'GET /agent-network-api/agents?mine=1',
-    'GET /agent-network-api/agents?q=Research%20Agent&limit=20',
+    'GET /agent-network-api/agents?q=Research%20Agent',
     'POST /agent-network-api/requirements',
     'POST /agent-network-api/requirements/requirement-1/publish',
     'GET /agent-network-api/requirements/requirement-1/recommendations',
@@ -137,19 +138,66 @@ test('contact_agent asks for missing input before making requests', async () => 
   assert.deepEqual(calls, []);
 });
 
-test('update_agent reads the owned profile then updates it with a stable key', async () => {
-  const updated = { ...MY_AGENT, description: 'Finds partners who enjoy anime.' };
+test('search_agents requires a query and omits client paging controls', async () => {
+  const missing = executorFor([]);
+  const missingResult = await missing.executor.execute({
+    operation: 'search_agents', input: { limit: 100 },
+  });
+  assert.equal(missingResult.status, 'input_required');
+  assert.deepEqual(missingResult.fields, ['query']);
+  assert.deepEqual(missing.calls, []);
+
+  const found = executorFor([[TARGET]]);
+  const result = await found.executor.execute({
+    operation: 'search_agents', input: { query: 'Research Agent', limit: 100 },
+  });
+  assert.equal(result.status, 'completed');
+  assert.equal(found.calls[0].path, '/agent-network-api/agents?q=Research%20Agent');
+});
+
+test('search_agents fails explicitly when the account has no Agent', async () => {
+  const error = Object.assign(new Error('Agent profile required'), {
+    code: 'AGENT_REQUIRED',
+    status: 409,
+  });
+  const { executor } = executorFor([error]);
+  const result = await executor.execute({
+    operation: 'search_agents', input: { query: 'research' },
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.equal(result.code, 'AGENT_REQUIRED');
+  assert.equal(result.details.nextOperation, 'ensure_agent');
+  assert.match(result.message, /ensure_agent/);
+});
+
+test('ensure_agent sends optional public tags', async () => {
+  const { calls, executor } = executorFor([[], { agent: MY_AGENT }]);
+  const result = await executor.execute({
+    operation: 'ensure_agent',
+    input: { agent: MY_AGENT },
+  });
+  assert.equal(result.status, 'completed');
+  assert.deepEqual(calls[1].body, {
+    description: MY_AGENT.description,
+    name: MY_AGENT.name,
+    tags: MY_AGENT.tags,
+  });
+});
+
+test('update_agent reads the owned profile then updates tags with a stable key', async () => {
+  const updated = { ...MY_AGENT, tags: ['anime', 'community'] };
   const { calls, executor } = executorFor([[MY_AGENT], { agent: updated }]);
   const result = await executor.execute({
     operation: 'update_agent',
-    input: { agent: { description: updated.description } },
+    input: { agent: { tags: updated.tags } },
   });
   assert.equal(result.status, 'completed');
   assert.equal(result.data.updated, true);
   assert.deepEqual(calls, [
     { method: 'GET', path: '/agent-network-api/agents?mine=1' },
     {
-      body: { name: updated.name, description: updated.description },
+      body: { name: updated.name, description: updated.description, tags: updated.tags },
       idempotencyKey: 'workflow-1:agent:update',
       method: 'PATCH',
       path: '/agent-network-api/agents/agent-me',
@@ -201,7 +249,7 @@ test('unblock_agent includes and encodes an optional blocker ID', async () => {
   assert.equal(calls[0].path, '/agent-network-api/blocks/agent%2Fblocked?blockerAgentId=agent%2Fowner');
 });
 
-test('authorization opens the browser, polls, and resumes the exact action', async () => {
+test('search without a credential authorizes and resumes the exact action', async () => {
   const credentialStore = memoryStore();
   const workflowStore = memoryStore();
   const requests = [];
@@ -216,39 +264,84 @@ test('authorization opens the browser, polls, and resumes the exact action', asy
   });
   const api = { request: (request) => connector.execute(request) };
   const executor = createActionExecutor({ api, workflowStore, randomId: () => 'workflow-1' });
-  const request = { operation: 'get_my_agent', input: {} };
+  const request = { operation: 'search_agents', input: { query: 'research' } };
 
   const completed = await executor.execute(request);
-  assert.deepEqual(completed, { status: 'completed', operation: 'get_my_agent', data: null });
+  assert.deepEqual(completed, { status: 'completed', operation: 'search_agents', data: [] });
   assert.equal(opened.length, 1);
   assert.equal(requests.length, 4);
+  assert.match(requests[3].url, /\/agent-network-api\/agents\?q=research$/);
+  assert.match(requests[3].headers.Authorization, /^Bearer tm_agent_/);
   assert.equal(workflowStore.current(), null);
 });
 
-test('public discovery does not initialize credential storage', async () => {
+test('search HTTP 401 replaces the rejected credential and replays the search', async () => {
+  const credentialStore = memoryStore();
+  credentialStore.set({ active: { token: 'rejected-token', credentialId: 'old' } });
+  const requests = [];
+  const opened = [];
+  const authorization = authorizationHttp({ credentialStore, requests });
+  let rejected = false;
+  const http = {
+    async request(request) {
+      if (!rejected && request.url.includes('/agents?q=research')) {
+        rejected = true;
+        requests.push(request);
+        throw new AgentNetworkHttpError({
+          status: 401, code: 'AUTH_REQUIRED', message: 'Sign in required',
+        });
+      }
+      return authorization.request(request);
+    },
+  };
+  const connector = createConnector({
+    store: credentialStoreAdapter(credentialStore),
+    browser: { open: async (url) => opened.push(url) },
+    baseUrl: 'https://tokensmind.ai',
+    http,
+    client: { name: 'test', version: '1', deviceName: 'test', platform: 'test' },
+  });
+
+  const result = await connector.execute({
+    method: 'GET', path: '/agent-network-api/agents?q=research',
+  });
+
+  assert.deepEqual(result, []);
+  assert.equal(opened.length, 1);
+  assert.equal(requests[0].headers.Authorization, 'Bearer rejected-token');
+  assert.match(requests.at(-1).headers.Authorization, /^Bearer tm_agent_/);
+  assert.notEqual(requests.at(-1).headers.Authorization, 'Bearer rejected-token');
+});
+
+test('search requires the stored credential and sends it to the service', async () => {
+  const requests = [];
   const store = {
-    async read() { throw new Error('credential store should remain unused'); },
-    async write() { throw new Error('credential store should remain unused'); },
-    async remove() { throw new Error('credential store should remain unused'); },
+    async read(name) {
+      if (name === 'active') return { token: 'stored-token', credentialId: 'credential-1' };
+      return null;
+    },
+    async write() {},
+    async remove() {},
   };
   const connector = createConnector({
     store,
     browser: { open: async () => {} },
     baseUrl: 'https://tokensmind.ai',
-    http: { request: async () => [TARGET] },
+    http: { request: async (request) => { requests.push(request); return [TARGET]; } },
     client: { name: 'test', version: '1', deviceName: 'test', platform: 'test' },
   });
 
   const result = await connector.execute({
     method: 'GET',
-    path: '/agent-network-api/agents?q=comics&limit=20',
+    path: '/agent-network-api/agents?q=comics',
   });
 
   assert.deepEqual(result, [TARGET]);
+  assert.equal(requests[0].headers.Authorization, 'Bearer stored-token');
 });
 
 test('Node CLI emits one structured result on stdout', () => {
-  const script = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'skills', 'tokensmind-agent-network-runtime', 'scripts', 'agent-network-runtime.mjs');
+  const script = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'skills', 'tokensmind-agent-network', 'scripts', 'agent-network-runtime.mjs');
   const result = spawnSync(process.execPath, [script], {
     input: JSON.stringify({ operation: 'unsupported_operation', input: {} }),
     encoding: 'utf8',
@@ -263,7 +356,7 @@ test('Node CLI emits one structured result on stdout', () => {
 });
 
 test('Node CLI runs through an npm bin symlink', (context) => {
-  const script = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'skills', 'tokensmind-agent-network-runtime', 'scripts', 'agent-network-runtime.mjs');
+  const script = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'skills', 'tokensmind-agent-network', 'scripts', 'agent-network-runtime.mjs');
   const tempDir = mkdtempSync(path.join(os.tmpdir(), 'agent-network-runtime-bin-'));
   const bin = path.join(tempDir, 'agent-network');
   context.after(() => rmSync(tempDir, { recursive: true, force: true }));

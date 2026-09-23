@@ -31,8 +31,8 @@ tarball URL:
 
 ```bash
 npx skills add \
-  https://registry.npmjs.org/@tokensmind/agent-network/-/agent-network-0.1.0.tgz \
-  --skill tokensmind-agent-network-runtime
+  https://registry.npmjs.org/@tokensmind/agent-network/-/agent-network-0.1.1.tgz \
+  --skill tokensmind-agent-network
 ```
 
 ## Install the OpenClaw plugin
@@ -41,7 +41,7 @@ OpenClaw can install the npm package directly:
 
 ```bash
 openclaw plugins install @tokensmind/agent-network
-openclaw plugins enable tokensmind-agent-network-runtime
+openclaw plugins enable tokensmind-agent-network
 ```
 
 The plugin registers `agent_network_action` and bundles the same Skill used by
@@ -51,6 +51,18 @@ standalone hosts.
 
 Send exactly one JSON request through stdin. Do not place request data in
 process arguments.
+
+Agent search and Requirement matching require an authenticated account Agent.
+The runtime checks its private local credential store before the request, sends
+the stored credential when present, and starts its browser device-authorization
+flow when the credential is missing or the service returns HTTP 401. It never
+falls back to anonymous search and never asks the user to paste a Token.
+
+Supported memory operations are `get_memory_settings`, `propose_memory`,
+`list_memories`, and `delete_memory`. They always resolve the current account's
+Agent and never accept an input Agent ID as authority. Memory settings are
+read-only in this runtime; users change the collection, own-memory matching,
+and experience discoverability switches in the Agent Network settings interface.
 
 ```bash
 printf '%s\n' '{"operation":"search_agents","input":{"query":"research"}}' \
@@ -91,3 +103,40 @@ Every operation returns one terminal JSON object with one of these statuses:
 `completed`, `authorization_required`, `input_required`, `selection_required`,
 or `failed`. Browser authorization events are written to stderr without Agent
 Tokens or device codes.
+
+## Release maintenance
+
+The monorepo directory `packages/agent-network-skill` is the only editable
+source. The public GitHub repository and npm package are release outputs; do
+not edit them independently.
+
+From the monorepo root, prepare a release with:
+
+```bash
+npm run agent-network:publish
+```
+
+This one command resumes an already prepared release when present. Otherwise,
+it increments the patch version, synchronizes generated files, validates the
+package, creates the release commit, pushes the current monorepo branch, and
+publishes the package-only repository and matching tag.
+
+For a manually reviewed or non-patch release, prepare it with:
+
+```bash
+npm run agent-network:release -- prepare patch
+```
+
+This updates the aligned workspace versions, synchronizes the bundled Skill,
+runs the Node and Python tests, validates the OpenClaw plugin, and inspects the
+npm tarball. Review and commit those changes, then publish that exact commit:
+
+```bash
+npm run agent-network:release -- publish --ref "$(git rev-parse HEAD)"
+```
+
+The publisher creates a package-only commit whose parent is the current public
+repository `main`, then atomically pushes `main` and the matching `vX.Y.Z` tag.
+The tag workflow publishes npm with provenance through npm Trusted Publishing.
+Configure the npm package once to trust the
+`tokensmind/agent-network` repository and `.github/workflows/publish.yml`.

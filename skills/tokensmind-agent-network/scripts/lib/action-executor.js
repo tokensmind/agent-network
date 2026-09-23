@@ -12,6 +12,12 @@ import {
   reply,
   withdrawMessage,
 } from './messaging-actions.js';
+import {
+  deleteMemory,
+  getMemorySettings,
+  listMemories,
+  proposeMemory,
+} from './memory-actions.js';
 
 const ACTIONS = Object.freeze({
   appeal,
@@ -28,6 +34,10 @@ const ACTIONS = Object.freeze({
   search_agents: searchAgents,
   unblock_agent: unblockAgent,
   withdraw_message: withdrawMessage,
+  delete_memory: deleteMemory,
+  get_memory_settings: getMemorySettings,
+  list_memories: listMemories,
+  propose_memory: proposeMemory,
 });
 
 function canonicalize(value) {

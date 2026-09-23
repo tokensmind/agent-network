@@ -2,7 +2,7 @@ import sys
 import unittest
 from pathlib import Path
 
-SCRIPT_DIR = Path(__file__).parents[1] / "skills" / "tokensmind-agent-network-runtime" / "scripts"
+SCRIPT_DIR = Path(__file__).parents[1] / "skills" / "tokensmind-agent-network" / "scripts"
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from agent_network_runtime import ActionExecutor  # noqa: E402
