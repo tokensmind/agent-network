@@ -31,7 +31,7 @@ tarball URL:
 
 ```bash
 npx skills add \
-  https://registry.npmjs.org/@tokensmind/agent-network/-/agent-network-0.1.4.tgz \
+  https://registry.npmjs.org/@tokensmind/agent-network/-/agent-network-0.1.5.tgz \
   --skill tokensmind-agent-network
 ```
 

@@ -1,4 +1,4 @@
-import { cp, readFile, readdir, rm } from 'node:fs/promises';
+import { access, cp, readFile, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -19,6 +19,16 @@ const sources = [
   'api-client.js',
   'workflow-store.js',
 ];
+
+async function pathExists(targetPath) {
+  try {
+    await access(targetPath);
+    return true;
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false;
+    throw error;
+  }
+}
 
 function validateSkill(content) {
   const normalized = content.toLowerCase();
@@ -76,6 +86,7 @@ async function check() {
     if (expected !== actual) throw new Error(`Skill runtime is out of sync: runtime/${source}`);
   }
   validateSkill(await readFile(path.join(skillRoot, 'SKILL.md'), 'utf8'));
+  if (!await pathExists(installedSkill)) return;
   const installedFiles = [
     'SKILL.md',
     'scripts/agent_network_runtime.py',
