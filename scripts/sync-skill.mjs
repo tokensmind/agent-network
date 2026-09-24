@@ -1,10 +1,11 @@
-import { cp, readFile, readdir } from 'node:fs/promises';
+import { cp, readFile, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SKILL_NAME = 'tokensmind-agent-network';
 const target = path.join(root, 'skills', SKILL_NAME, 'scripts', 'lib');
+const installedSkill = path.resolve(root, '..', '..', '.agents', 'skills', SKILL_NAME);
 const sources = [
   'action-errors.js',
   'action-validation.js',
@@ -57,6 +58,8 @@ async function sync() {
   }
   const generated = await readFile(path.join(root, 'skills', SKILL_NAME, 'SKILL.md'), 'utf8');
   validateSkill(generated);
+  await rm(installedSkill, { recursive: true, force: true });
+  await cp(path.join(root, 'skills', SKILL_NAME), installedSkill, { recursive: true });
 }
 
 async function check() {
@@ -73,6 +76,17 @@ async function check() {
     if (expected !== actual) throw new Error(`Skill runtime is out of sync: runtime/${source}`);
   }
   validateSkill(await readFile(path.join(skillRoot, 'SKILL.md'), 'utf8'));
+  const installedFiles = [
+    'SKILL.md',
+    'scripts/agent_network_runtime.py',
+    ...sources.map((source) => `scripts/lib/${source}`),
+    ...runtimeSources.map((source) => `scripts/lib/runtime/${source}`),
+  ];
+  for (const source of installedFiles) {
+    const expected = await readFile(path.join(skillRoot, source), 'utf8');
+    const actual = await readFile(path.join(installedSkill, source), 'utf8');
+    if (expected !== actual) throw new Error(`Installed Skill is out of sync: ${source}`);
+  }
 }
 
 if (process.argv.includes('--check')) await check();

@@ -1,0 +1,15 @@
+{
+  "name": "tokensmind-agent-network",
+  "description": "TokensMind Agent Network plugin marketplace for WorkBuddy and CodeBuddy.",
+  "owner": {
+    "name": "TokensMind"
+  },
+  "plugins": [
+    {
+      "name": "tokensmind-agent-network",
+      "source": ".",
+      "version": "0.1.3",
+      "description": "Discover, contact, and collaborate with Agents through TokensMind Agent Network."
+    }
+  ]
+}

@@ -147,28 +147,29 @@ test('search_agents requires a query and omits client paging controls', async ()
   assert.deepEqual(missingResult.fields, ['query']);
   assert.deepEqual(missing.calls, []);
 
-  const found = executorFor([[TARGET]]);
+  const found = executorFor([[MY_AGENT], [TARGET]]);
   const result = await found.executor.execute({
     operation: 'search_agents', input: { query: 'Research Agent', limit: 100 },
   });
   assert.equal(result.status, 'completed');
-  assert.equal(found.calls[0].path, '/agent-network-api/agents?q=Research%20Agent');
+  assert.deepEqual(found.calls.map(({ path }) => path), [
+    '/agent-network-api/agents?mine=1',
+    '/agent-network-api/agents?q=Research%20Agent',
+  ]);
 });
 
-test('search_agents fails explicitly when the account has no Agent', async () => {
-  const error = Object.assign(new Error('Agent profile required'), {
-    code: 'AGENT_REQUIRED',
-    status: 409,
-  });
-  const { executor } = executorFor([error]);
+test('search_agents checks the signed-in account and guides Agent setup before search', async () => {
+  const { calls, executor } = executorFor([[]]);
   const result = await executor.execute({
     operation: 'search_agents', input: { query: 'research' },
   });
 
   assert.equal(result.status, 'failed');
-  assert.equal(result.code, 'AGENT_REQUIRED');
+  assert.equal(result.code, 'AGENT_PROFILE_REQUIRED');
   assert.equal(result.details.nextOperation, 'ensure_agent');
-  assert.match(result.message, /ensure_agent/);
+  assert.deepEqual(result.details.requiredFields, ['agent.name', 'agent.description']);
+  assert.match(result.message, /Sign-in succeeded/);
+  assert.deepEqual(calls, [{ method: 'GET', path: '/agent-network-api/agents?mine=1' }]);
 });
 
 test('ensure_agent sends optional public tags', async () => {
@@ -254,7 +255,16 @@ test('search without a credential authorizes and resumes the exact action', asyn
   const workflowStore = memoryStore();
   const requests = [];
   const opened = [];
-  const http = authorizationHttp({ credentialStore, requests });
+  const authorization = authorizationHttp({ credentialStore, requests });
+  const http = {
+    async request(request) {
+      if (request.url.endsWith('/agent-network-api/agents?mine=1')) {
+        requests.push(request);
+        return [MY_AGENT];
+      }
+      return authorization.request(request);
+    },
+  };
   const connector = createConnector({
     store: credentialStoreAdapter(credentialStore),
     browser: { open: async (url) => opened.push(url) },
@@ -269,9 +279,10 @@ test('search without a credential authorizes and resumes the exact action', asyn
   const completed = await executor.execute(request);
   assert.deepEqual(completed, { status: 'completed', operation: 'search_agents', data: [] });
   assert.equal(opened.length, 1);
-  assert.equal(requests.length, 4);
-  assert.match(requests[3].url, /\/agent-network-api\/agents\?q=research$/);
-  assert.match(requests[3].headers.Authorization, /^Bearer tm_agent_/);
+  assert.equal(requests.length, 5);
+  assert.match(requests[3].url, /\/agent-network-api\/agents\?mine=1$/);
+  assert.match(requests[4].url, /\/agent-network-api\/agents\?q=research$/);
+  assert.match(requests[4].headers.Authorization, /^Bearer tm_agent_/);
   assert.equal(workflowStore.current(), null);
 });
 

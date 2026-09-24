@@ -164,13 +164,13 @@ class ActionExecutorTest(unittest.TestCase):
         self.assertEqual(result["status"], "input_required")
 
     def test_query_values_and_path_segments_are_encoded(self):
-        api = FakeApi([[]])
+        api = FakeApi([[{"id": "agent-me"}], []])
         result = ActionExecutor(api, MemoryWorkflow()).execute({
             "operation": "search_agents",
             "input": {"query": "a/b? c"},
         })
         self.assertEqual(result["status"], "completed")
-        self.assertEqual(api.calls[0]["path"], "/agent-network-api/agents?q=a%2Fb%3F%20c")
+        self.assertEqual(api.calls[1]["path"], "/agent-network-api/agents?q=a%2Fb%3F%20c")
 
     def test_search_agents_requires_query_and_omits_client_limit(self):
         missing_api = FakeApi([])
@@ -182,24 +182,29 @@ class ActionExecutorTest(unittest.TestCase):
         self.assertEqual(missing["fields"], ["query"])
         self.assertEqual(missing_api.calls, [])
 
-        api = FakeApi([[]])
+        api = FakeApi([[{"id": "agent-me"}], []])
         result = ActionExecutor(api, MemoryWorkflow()).execute({
             "operation": "search_agents",
             "input": {"query": "research", "limit": 100},
         })
         self.assertEqual(result["status"], "completed")
-        self.assertEqual(api.calls[0]["path"], "/agent-network-api/agents?q=research")
+        self.assertEqual([call["path"] for call in api.calls], [
+            "/agent-network-api/agents?mine=1",
+            "/agent-network-api/agents?q=research",
+        ])
 
-    def test_search_agents_fails_explicitly_without_account_agent(self):
-        error = AgentNetworkHttpError(409, "AGENT_REQUIRED", "Agent profile required")
-        result = ActionExecutor(FakeApi([error]), MemoryWorkflow()).execute({
+    def test_search_agents_checks_account_and_guides_agent_setup(self):
+        api = FakeApi([[]])
+        result = ActionExecutor(api, MemoryWorkflow()).execute({
             "operation": "search_agents",
             "input": {"query": "research"},
         })
         self.assertEqual(result["status"], "failed")
-        self.assertEqual(result["code"], "AGENT_REQUIRED")
+        self.assertEqual(result["code"], "AGENT_PROFILE_REQUIRED")
         self.assertEqual(result["nextOperation"], "ensure_agent")
-        self.assertIn("ensure_agent", result["message"])
+        self.assertEqual(result["requiredFields"], ["agent.name", "agent.description"])
+        self.assertIn("Sign-in succeeded", result["message"])
+        self.assertEqual(len(api.calls), 1)
 
     def test_unblock_agent_includes_encoded_blocker_id(self):
         api = FakeApi([{}])
@@ -231,18 +236,31 @@ class ActionExecutorTest(unittest.TestCase):
     def test_search_without_credential_authorizes_and_resumes(self):
         store = AuthorizationStore()
         requests = []
+        authorization = AuthorizationHttp(store, requests)
+
+        class SearchHttp:
+            def request(self, url, method="GET", headers=None, *, body=None):
+                if url.endswith("/agent-network-api/agents?mine=1"):
+                    requests.append({"url": url, "method": method, "headers": headers, "body": body})
+                    return [{"id": "agent-me"}]
+                return authorization.request(url, method, headers, body=body)
+
         connector = AgentNetworkConnector(
             store=store,
             browser=type("Browser", (), {"open": lambda self, url: None})(),
             base_url="https://tokensmind.ai",
-            http=AuthorizationHttp(store, requests),
+            http=SearchHttp(),
             client={"name": "test", "version": "1", "deviceName": "test", "platform": "test"},
         )
-        operation = {"method": "GET", "path": "/agent-network-api/agents?q=research"}
-        self.assertEqual(connector.execute(operation), [])
-        self.assertEqual(len(requests), 4)
-        self.assertTrue(requests[3]["url"].endswith("/agent-network-api/agents?q=research"))
-        self.assertTrue(requests[3]["headers"]["Authorization"].startswith("Bearer tm_agent_"))
+        api = type("Api", (), {"request": lambda _, method, path, body=None, key=None: connector.execute({"method": method, "path": path})})()
+        result = ActionExecutor(api, MemoryWorkflow()).execute({
+            "operation": "search_agents", "input": {"query": "research"},
+        })
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(len(requests), 5)
+        self.assertTrue(requests[3]["url"].endswith("/agent-network-api/agents?mine=1"))
+        self.assertTrue(requests[4]["url"].endswith("/agent-network-api/agents?q=research"))
+        self.assertTrue(requests[4]["headers"]["Authorization"].startswith("Bearer tm_agent_"))
 
     def test_search_401_reauthorizes_and_replays(self):
         store = AuthorizationStore()

@@ -21,7 +21,6 @@ from python_runtime.browser import BrowserOpener
 from python_runtime.connector import AgentNetworkConnector
 from python_runtime.constants import DEFAULT_BASE_URL
 from python_runtime.credential_store import create_credential_store
-from python_runtime.errors import AgentNetworkHttpError
 from python_runtime.http_client import HttpClient
 from python_runtime.request_policy import normalize_base_url
 
@@ -120,18 +119,17 @@ def _contact(api, data, key):
 
 def _search_agents(api, data, _key):
     query = _need(data.get("query"), "query")
-    try:
-        return api.request("GET", "/agent-network-api/agents?q=" + _url_value(query))
-    except AgentNetworkHttpError as error:
-        if error.code not in ("AGENT_REQUIRED", "AGENT_PROFILE_REQUIRED"):
-            raise
+    agent = _get_my_agent(api, data, _key)
+    if not agent:
         raise ActionState(
             "failed",
-            "Create the account Agent profile with ensure_agent before searching.",
-            code=error.code,
+            "Sign-in succeeded, but this account has no Agent profile. Ask the user for an Agent name and description, then run ensure_agent before searching.",
+            code="AGENT_PROFILE_REQUIRED",
             nextOperation="ensure_agent",
+            requiredFields=["agent.name", "agent.description"],
             retryable=False,
-        ) from error
+        )
+    return api.request("GET", "/agent-network-api/agents?q=" + _url_value(query))
 
 
 def _get_my_agent(api, _data, _key):

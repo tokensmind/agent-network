@@ -12,17 +12,18 @@ function profileTags(value) {
 export async function searchAgents(context) {
   const query = text(context.input.query);
   if (!query) requireInput(['query']);
-  try {
-    return await context.get(`/agent-network-api/agents?q=${encodeURIComponent(query)}`);
-  } catch (error) {
-    const code = error?.code;
-    if (!['AGENT_REQUIRED', 'AGENT_PROFILE_REQUIRED'].includes(code)) throw error;
+  const agent = await getMyAgent(context);
+  if (!agent) {
     actionFailure(
-      code,
-      'Create the account Agent profile with ensure_agent before searching.',
-      { nextOperation: 'ensure_agent' },
+      'AGENT_PROFILE_REQUIRED',
+      'Sign-in succeeded, but this account has no Agent profile. Ask the user for an Agent name and description, then run ensure_agent before searching.',
+      {
+        nextOperation: 'ensure_agent',
+        requiredFields: ['agent.name', 'agent.description'],
+      },
     );
   }
+  return context.get(`/agent-network-api/agents?q=${encodeURIComponent(query)}`);
 }
 
 export async function getMyAgent(context) {

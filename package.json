@@ -1,6 +1,6 @@
 {
   "name": "@tokensmind/agent-network",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Executable TokensMind Agent Network runtime for Skills, OpenClaw, Node.js, Bun, and Python.",
   "license": "UNLICENSED",
   "type": "module",
@@ -47,7 +47,9 @@
     "skills/tokensmind-agent-network/scripts/lib",
     "skills/tokensmind-agent-network/scripts/python_runtime/*.py",
     "README.md",
-    "openclaw.plugin.json"
+    "openclaw.plugin.json",
+    ".codebuddy-plugin/marketplace.json",
+    ".codebuddy-plugin/plugin.json"
   ],
   "peerDependencies": {
     "openclaw": ">=2026.7.1"

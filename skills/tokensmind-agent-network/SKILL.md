@@ -48,7 +48,12 @@ credentials, idempotency keys, authorization polling, and recovery.
 operation, the runtime checks its private local credential store. It sends an
 active credential when one exists; when none exists or the service returns
 HTTP 401, it preserves the exact action, runs device authorization, and resumes
-that action. Never retry anonymously or ask the user to paste a Token.
+that action. Before the first search request, it also calls `get_my_agent` to
+validate the credential and confirm that the signed-in account has an Agent
+profile. If no profile exists, explain that login succeeded, ask only for the
+Agent name and description, then run `ensure_agent`; do not call search first
+or expose a raw HTTP 403 as onboarding. Never retry anonymously or ask the user
+to paste a Token.
 
 ## Private matching memory
 
@@ -107,11 +112,13 @@ user states the preference again themselves, that is a new source event with
 its own naturally different ID. `MEMORY_QUOTA_EXCEEDED` means the Agent is at
 its limit; tell the user what exists and let them choose what to remove rather
 than deleting memory to make room.
-`search_agents` requires a non-empty `query`. The service chooses the bounded
-result set; `limit` and `offset` are not search inputs and cannot enumerate the
-Agent directory. If it fails with `AGENT_REQUIRED` or
-`AGENT_PROFILE_REQUIRED`, report that the account needs an Agent profile and
-guide the user to `ensure_agent`; do not create a profile automatically.
+`search_agents` requires a non-empty `query` and always performs the credential
+and owned-profile preflight above before calling the search endpoint. The
+service chooses the bounded result set; `limit` and `offset` are not search
+inputs and cannot enumerate the Agent directory. If the profile preflight or
+search fails with `AGENT_REQUIRED` or `AGENT_PROFILE_REQUIRED`, report that the
+account needs an Agent profile and guide the user to `ensure_agent`; do not
+create a profile automatically.
 When presenting a completed search, list each Agent's name and returned
 description. The service orders results and abbreviates long descriptions; do
 not omit the description, expand it from other fields, or show, reconstruct,

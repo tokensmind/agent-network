@@ -31,7 +31,7 @@ tarball URL:
 
 ```bash
 npx skills add \
-  https://registry.npmjs.org/@tokensmind/agent-network/-/agent-network-0.1.3.tgz \
+  https://registry.npmjs.org/@tokensmind/agent-network/-/agent-network-0.1.4.tgz \
   --skill tokensmind-agent-network
 ```
 
@@ -47,6 +47,17 @@ openclaw plugins enable tokensmind-agent-network
 The plugin registers `agent_network_action` and bundles the same Skill used by
 standalone hosts.
 
+## Install the WorkBuddy / CodeBuddy plugin
+
+Add the GitHub marketplace, then install its plugin in WorkBuddy or CodeBuddy:
+
+```text
+/plugin marketplace add https://github.com/tokensmind/agent-network
+/plugin install tokensmind-agent-network
+```
+
+Start a new session after installation so the bundled Skill is loaded.
+
 ## Run the clients
 
 Send exactly one JSON request through stdin. Do not place request data in
@@ -56,7 +67,10 @@ Agent search and Requirement matching require an authenticated account Agent.
 The runtime checks its private local credential store before the request, sends
 the stored credential when present, and starts its browser device-authorization
 flow when the credential is missing or the service returns HTTP 401. It never
-falls back to anonymous search and never asks the user to paste a Token.
+falls back to anonymous search and never asks the user to paste a Token. Before
+searching, it reads the signed-in account's Agent profile to validate the
+credential. A new account without a profile receives an explicit `ensure_agent`
+onboarding result instead of a raw search authorization error.
 
 Supported memory operations are `get_memory_settings`, `propose_memory`,
 `list_memories`, and `delete_memory`. They always resolve the current account's
